@@ -567,3 +567,63 @@ button:disabled {
   margin: 0 0 8px;
   color: var(--muted);
 }
+
+/* 3D preview: overrides the placeholder centring above */
+.preview3d {
+  position: relative;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.preview3d-host,
+.preview3d-host canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.preview3d-busy,
+.preview3d-legend {
+  position: absolute;
+  padding: 3px 8px;
+  font-size: 12px;
+  background: rgb(255 255 255 / 0.85);
+  border-radius: 4px;
+}
+
+.preview3d-busy {
+  top: 8px;
+  right: 8px;
+}
+
+.preview3d-legend {
+  left: 8px;
+  bottom: 8px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: var(--text);
+}
+
+.preview3d-legend label {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.swatch::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 3px;
+  margin-right: 4px;
+  vertical-align: middle;
+  background: #2563eb;
+}
+
+.swatch.detail::before {
+  background: #9333ea;
+}
