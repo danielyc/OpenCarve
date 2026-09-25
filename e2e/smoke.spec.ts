@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { settledWidth, waitForCam } from './helpers'
 
 // Each test gets a fresh browser context (empty IndexedDB), so the app opens on the home screen.
 // A new project opens on Settings; most tests start drawing, so they move on to Design.
@@ -20,15 +21,15 @@ test('Settings hides the 3D preview and widens the panel', async ({ page }) => {
   const panel = page.locator('.panel')
   const preview = page.getByLabel('3D carve preview')
   await expect(preview).toBeVisible()
-  const narrow = 280 // the Design panel column; polled, as the step change animates the width
-  await expect.poll(async () => (await panel.boundingBox())!.width).toBe(narrow)
+  const narrow = 280 // the Design panel column
+  expect(await settledWidth(panel)).toBe(narrow)
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
   await expect(preview).toBeHidden()
-  await expect.poll(async () => (await panel.boundingBox())!.width).toBeGreaterThan(narrow + 200)
+  expect(await settledWidth(panel)).toBeGreaterThan(narrow + 200)
   await expect(page.getByLabel('Design canvas')).toBeVisible()
   await page.getByRole('button', { name: 'Design', exact: true }).click()
   await expect(preview).toBeVisible()
-  await expect.poll(async () => (await panel.boundingBox())!.width).toBe(narrow)
+  expect(await settledWidth(panel)).toBe(narrow)
 })
 
 test('a stock change on Settings after orbiting re-frames the 3D view on return', async ({ page }) => {
@@ -55,8 +56,9 @@ test('a stock change on Settings after orbiting re-frames the 3D view on return'
   await expect(preview).toBeVisible()
   await expect.poll(panelWidth).toBe(280)
   const distance = async () => Number(await preview.getAttribute('data-view-distance'))
+  // A view framed on the collapsed canvas would be far away; polled, as a resize redraws on the next frame.
+  await expect.poll(distance).toBeLessThan(10)
   const back = await distance()
-  expect(back).toBeLessThan(10) // a view framed on the collapsed canvas would be far away
   await page.getByRole('button', { name: 'Reset view' }).click()
   expect(await distance()).toBeCloseTo(back, 2)
 })
@@ -216,6 +218,7 @@ test('simulate lists ops and selects the shape', async ({ page }) => {
   await expect(page.locator('[data-id].selected')).toHaveCount(0)
 
   await page.getByRole('button', { name: /^Simulate/ }).click()
+  await waitForCam(page)
   const rows = page.locator('.op-list').getByRole('button')
   await expect(rows).toHaveCount(1)
   await expect(rows.first()).toContainText('Outline outside')
@@ -241,8 +244,9 @@ test('badges the Simulate step when a shape is partly outside the stock', async 
   await page.mouse.down()
   await page.mouse.move(box.x + 120, box.y + 100, { steps: 4 })
   await page.mouse.up()
-  await expect(page.getByRole('button', { name: 'Simulate 1 warning' })).toBeVisible()
   await page.getByRole('button', { name: /^Simulate/ }).click()
+  await waitForCam(page)
+  await expect(page.getByRole('button', { name: 'Simulate 1 warning' })).toBeVisible()
   await expect(page.getByRole('list', { name: 'Warnings' })).toContainText('partly outside the stock')
 })
 

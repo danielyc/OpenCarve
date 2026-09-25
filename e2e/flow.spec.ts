@@ -1,10 +1,12 @@
 import { expect, test, type Download, type Page } from '@playwright/test'
+import { waitForCam } from './helpers'
 
 const text = async (download: Download) => Buffer.concat(await (await download.createReadStream()).toArray()).toString()
 
 // Selects a shape through its Simulate row (canvas hit-testing on glyphs is fiddly), then returns to Design.
 async function selectViaSimulate(page: Page, name: string) {
   await page.getByRole('button', { name: /^Simulate/ }).click()
+  await waitForCam(page)
   await page.locator('.op-list').getByRole('button', { name: new RegExp(`^${name}`) }).first().click()
   await page.getByRole('button', { name: 'Design', exact: true }).click()
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue(name)
@@ -63,6 +65,7 @@ test('designs, simulates, exports and reopens a two-bit sign', async ({ page }) 
   await expect(page.locator('[data-cut=vcarve]')).toHaveCount(1)
 
   await page.getByRole('button', { name: /^Simulate/ }).click()
+  await waitForCam(page)
   const rows = page.locator('.op-list').getByRole('button')
   await expect(rows.filter({ hasText: /^Rectangle.*Outline outside · Rough bit/ })).toHaveCount(1)
   await expect(rows.filter({ hasText: /^Text.*V-carve · Detail bit/ })).toHaveCount(1)

@@ -36,7 +36,7 @@ export default function ExportPanel() {
   }
 
   return (
-    <>
+    <div data-cam-busy={busy}>
       <h2>Export</h2>
       <Summary />
       <Warnings />
@@ -69,6 +69,6 @@ export default function ExportPanel() {
           )
         })}
       </ul>
-    </>
+    </div>
   )
 }
