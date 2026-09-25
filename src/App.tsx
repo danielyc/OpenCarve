@@ -5,6 +5,7 @@ import ExportPanel from './ExportPanel'
 import { icons } from './icons'
 import Inspector from './Inspector'
 import { importSvg } from './lib/svgImport'
+import Preview3D from './preview/Preview3D'
 import { useAppStore, type Step, type Tool } from './store'
 
 const STEPS: { id: Step; label: string }[] = [
@@ -95,7 +96,7 @@ export default function App() {
       </aside>
       <main className="workspace">
         <Canvas />
-        <section className="preview3d">3D preview</section>
+        <Preview3D />
       </main>
       <aside className="panel">
         {step === 'export' ? <ExportPanel /> : <Inspector />}

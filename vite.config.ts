@@ -5,6 +5,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   worker: { format: 'es' },
+  build: { chunkSizeWarningLimit: 800 }, // three.js is one lazy ~740 kB chunk
   optimizeDeps: { include: ['clipper2-ts', 'd3-delaunay'] }, // used only by the worker, found too late otherwise (page reload)
   test: { include: ['src/**/*.test.{ts,tsx}'] },
 })

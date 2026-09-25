@@ -28,6 +28,8 @@ test('draws a rectangle and undoes it', async ({ page }) => {
   const h = parseFloat(await page.getByLabel('H', { exact: true }).inputValue())
   expect(w).toBeGreaterThan(0)
   expect(w / h).toBeCloseTo(1.5, 1)
+  await expect(page.getByLabel('3D carve preview')).toBeVisible()
+  await expect(page.getByText('Simulating…')).toBeHidden({ timeout: 10_000 })
 
   await page.keyboard.press('ControlOrMeta+z')
   await expect(shapes).toHaveCount(0)

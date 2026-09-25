@@ -4,6 +4,7 @@ import { onFontLoad } from './lib/fonts'
 import { polylineBounds, shapeBounds, shapeToPolylines } from './lib/geometry'
 import { findBit, findMaterial, recommendedSettings } from './lib/library'
 import type { Units } from './lib/units'
+import type { SimResult } from './preview/sim'
 import { defaultCut, newId, newProject, validCut, type BitRole, type Cut, type CutSettings, type Project, type Shape, type ShapePatch } from './model'
 
 export type Step = 'design' | 'simulate' | 'export'
@@ -31,6 +32,8 @@ interface AppState {
   status: string | null
   cam: CamResult | null
   camBusy: boolean
+  sim: SimResult | null
+  simBusy: boolean
   setStep: (step: Step) => void
   addShape: (shape: Shape) => void
   addShapes: (shapes: Shape[]) => void
@@ -102,6 +105,8 @@ export const useAppStore = create<AppState>()((set, get) => {
     status: null,
     cam: null,
     camBusy: false,
+    sim: null,
+    simBusy: false,
     setStep: (step) => set({ step }),
 
     addShape: (shape) => get().addShapes([shape]),
