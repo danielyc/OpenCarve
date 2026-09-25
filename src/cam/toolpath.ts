@@ -401,7 +401,7 @@ export function planProject(project: Project): CamResult {
         if (or && inflate(floor, -or).length) {
           push(ops, oRole, 'vcarve-clear', pocketSegments(floor, or, cutSettings[oRole]!, dmax))
           const rest = opening(boolean(ClipType.Difference, floor, opening(floor, or)), SLIVER)
-          if (rest.length) push(ops, vRole!, 'vcarve-clear', vRings(boolean(ClipType.Intersection, floor, inflate(rest, 0.8 * k))))
+          if (rest.length) push(ops, vRole!, 'vcarve-clear', vRings(boolean(ClipType.Intersection, floor, inflate(rest, 2 * (f + 0.4 * k)))))
         } else {
           warnings.push(or ? `The endmill is too large for the floor of ${shape.name}; the V-bit clears it` : 'Add a flat endmill for a smoother V-carve floor')
           push(ops, vRole!, 'vcarve-clear', vRings(floor))
