@@ -1,7 +1,8 @@
 import { beforeEach, expect, test } from 'vitest'
 import { shapeBounds } from './lib/geometry'
 import { findBit, vbitMaxDepth } from './lib/library'
-import { newProject, tabsActive, type Shape } from './model'
+import { parseProject, serializeProject } from './lib/projectFile'
+import { LIMITS, newProject, tabsActive, type Shape } from './model'
 import { useAppStore } from './store'
 
 const store = useAppStore.getState
@@ -256,4 +257,15 @@ test('overlapping transients become separate undo entries and a late commit only
   expect(store().project.shapes[0].x).toBe(20)
   store().undo()
   expect(store().project.shapes[0].x).toBe(10)
+})
+
+test('values below the UI minimums are clamped to them, and the result saves a file that opens', () => {
+  store().setStock({ w: 0.01, h: 0, thickness: 0.05 })
+  store().setMachine({ name: 'Custom', w: 0.5, h: 0, maxRpm: 0.2 })
+  store().setCutSettings('rough', { safeZ: 0.1 })
+  const p = store().project
+  expect(p.stock).toEqual({ w: LIMITS.stockSize, h: LIMITS.stockSize, thickness: LIMITS.thickness })
+  expect(p.machine).toMatchObject({ w: LIMITS.travel, h: LIMITS.travel, maxRpm: LIMITS.maxRpm })
+  expect(p.cutSettings.rough.safeZ).toBe(LIMITS.safeZ)
+  expect(parseProject(serializeProject(p))).toEqual(p)
 })

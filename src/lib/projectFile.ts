@@ -1,4 +1,4 @@
-import { fitOrigin, MAX_STEPOVER, newId, newProject, validCut, type BitOverride, type BitRole, type Cut, type CutSettings, type Origin, type Point, type Polyline, type Project, type Shape } from '../model'
+import { fitOrigin, LIMITS, MAX_STEPOVER, newId, newProject, validCut, type BitOverride, type BitRole, type Cut, type CutSettings, type Origin, type Point, type Polyline, type Project, type Shape } from '../model'
 import { FONTS, fontFamily, MAX_FONT_BYTES, type StoredFont } from './fonts'
 import { BITS, differingFields, findBit, findMaterial, MATERIALS, overrideError } from './library'
 
@@ -157,7 +157,7 @@ function settings(v: unknown, what: string): CutSettings {
     plunge: positive(o, 'plunge', what),
     stepdown: positive(o, 'stepdown', what),
     rpm: positive(o, 'rpm', what),
-    safeZ: num(o, 'safeZ', what, 0.5),
+    safeZ: num(o, 'safeZ', what, LIMITS.safeZ),
     stepover: Math.min(MAX_STEPOVER, positive(o, 'stepover', what)),
     direction: oneOf(o, 'direction', what, ['climb', 'conventional'] as const),
   }
@@ -246,14 +246,14 @@ function projectFromData(data: unknown, warnings: string[]): Project {
   const defaultMaterial = newProject().materialId
 
   const so = obj(p.stock, 'stock')
-  const stock = { w: num(so, 'w', 'stock', 1), h: num(so, 'h', 'stock', 1), thickness: num(so, 'thickness', 'stock', 0.2) }
+  const stock = { w: num(so, 'w', 'stock', LIMITS.stockSize), h: num(so, 'h', 'stock', LIMITS.stockSize), thickness: num(so, 'thickness', 'stock', LIMITS.thickness) }
   let materialId = str(p, 'materialId', 'project')
   if (!MATERIALS.some((m) => m.id === materialId)) {
     warnings.push(`Unknown material "${materialId}", using ${findMaterial(defaultMaterial).name}.`)
     materialId = defaultMaterial
   }
   const mo = obj(p.machine, 'machine')
-  const machine = { name: str(mo, 'name', 'machine'), w: num(mo, 'w', 'machine', 1), h: num(mo, 'h', 'machine', 1), maxRpm: num(mo, 'maxRpm', 'machine', 1) }
+  const machine = { name: str(mo, 'name', 'machine'), w: num(mo, 'w', 'machine', LIMITS.travel), h: num(mo, 'h', 'machine', LIMITS.travel), maxRpm: num(mo, 'maxRpm', 'machine', LIMITS.maxRpm) }
   const bo = obj(p.bits, 'bits')
   const detail = bo.detail === undefined ? undefined : str(bo, 'detail', 'bits')
   const bits = { rough: str(bo, 'rough', 'bits'), ...(detail && { detail }) }

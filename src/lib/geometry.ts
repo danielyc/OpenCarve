@@ -99,6 +99,9 @@ export function fitText(shape: TextShape): TextShape {
   return b.minX > b.maxX ? { ...shape, w: 0, h: 0 } : { ...shape, w: b.maxX - b.minX, h: b.maxY - b.minY }
 }
 
+// Letter spacing scales with the size; the clamp absorbs rounding so it never drops below -size/2 (the loader's limit).
+export const textAtSize = (t: TextShape, size: number): TextShape => ({ ...t, size, letterSpacing: Math.max(-size / 2, (t.letterSpacing * size) / t.size) })
+
 export const dominantScale = (sx: number, sy: number) =>
   Math.abs(Math.log(Math.abs(sx))) >= Math.abs(Math.log(Math.abs(sy))) ? Math.abs(sx) : Math.abs(sy)
 
@@ -111,7 +114,7 @@ export function scaleShape(shape: Shape, sx: number, sy: number): Shape {
       return { ...shape, paths: shape.paths.map((p) => ({ ...p, points: scale(p.points) })) }
     case 'text': {
       const f = dominantScale(sx, sy)
-      return { ...shape, size: shape.size * f, w: shape.w * f, h: shape.h * f, letterSpacing: shape.letterSpacing * f }
+      return { ...textAtSize(shape, shape.size * f), w: shape.w * f, h: shape.h * f }
     }
     default:
       return { ...shape, w: shape.w * Math.abs(sx), h: shape.h * Math.abs(sy) }

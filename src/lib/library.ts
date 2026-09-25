@@ -88,8 +88,8 @@ export function recommendedSettings(material: Material, bit: Bit, maxRpm: number
   const f = (vbit ? 1 : Math.min(1.5, Math.max(0.3, bit.diameter / 3.175))) * (rpm / material.rpm)
   const stepdown = vbit ? 1 : Math.round(Math.min(6, Math.max(0.2, material.stepdownFrac * bit.diameter)) * 10) / 10
   return {
-    feed: Math.round(material.feed * f),
-    plunge: Math.round(material.plunge * f),
+    feed: Math.max(1, Math.round(material.feed * f)), // a very low max RPM must not round to 0, which the loader rejects
+    plunge: Math.max(1, Math.round(material.plunge * f)),
     stepdown,
     rpm,
     safeZ: 5,

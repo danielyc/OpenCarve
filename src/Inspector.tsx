@@ -1,7 +1,7 @@
 import { useId, useRef, useState, type ReactNode } from 'react'
 import { FontPicker } from './FontPicker'
 import { loadFont } from './lib/fonts'
-import { fitText, localBounds, scaleShape } from './lib/geometry'
+import { fitText, localBounds, scaleShape, textAtSize } from './lib/geometry'
 import { BITS, effectiveBit, findBit, findMaterial, MACHINES, MATERIALS, overrideError, vbitMaxDepth, vcarveBit } from './lib/library'
 import { formatLength, mmToIn, parseLength, type Units } from './lib/units'
 import { isOpen, MAX_STEPOVER, tabsActive, type BitOverride, type OriginPreset, type BitRole, type Cut, type Shape, type TextShape } from './model'
@@ -542,7 +542,7 @@ export default function Inspector() {
               }
             />
             {lengthField('Size', (s) => (s.type === 'text' ? s.size : 0), (s, size) =>
-              s.type === 'text' ? fitText({ ...s, size, letterSpacing: (s.letterSpacing * size) / s.size }) : s,
+              s.type === 'text' ? fitText(textAtSize(s, size)) : s,
             true)}
             <h3 className="subhead">Layout</h3>
             {lengthField('Letter spacing', (s) => (s.type === 'text' ? s.letterSpacing : 0), (s, v) =>

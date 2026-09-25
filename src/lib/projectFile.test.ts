@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
 import { DEFAULT_TEXT_LAYOUT, defaultCut, newProject, type Project } from '../model'
+import { scaleShape, textAtSize } from './geometry'
 import { parseProject, parseProjectFile, serializeProject } from './projectFile'
 
 const sample = (): Project => ({
@@ -210,4 +211,15 @@ test('validates bit overrides, dropping bad ones with a warning', () => {
   expect(() => parseProject(file({ ...sample(), bitOverrides: [] }))).toThrow(/bitOverrides must be an object/)
   // Values equal to the library bit (within display rounding) aren't overrides.
   expect(parseProject(file({ ...sample(), bitOverrides: { rough: { diameter: 3.17 }, detail: { angle: 90, flat: 1 } } })).bitOverrides).toEqual({ detail: { flat: 1 } })
+})
+
+test('resizing text at the tightest letter spacing still saves a file that opens', () => {
+  // (17.3, 31) is a pair where plain proportional scaling rounds below -size/2.
+  for (const [from, to] of [[17.3, 31], [10, 25.4], [7, 6.35], [33.3, 4.1]]) {
+    const t = { ...textIn('roboto', 't'), size: from, letterSpacing: -from / 2 }
+    for (const s of [textAtSize(t, to), scaleShape(t, to / from, to / from)]) {
+      const p = { ...sample(), shapes: [s] }
+      expect(parseProject(serializeProject(p))).toEqual(p)
+    }
+  }
 })

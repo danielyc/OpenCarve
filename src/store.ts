@@ -5,7 +5,7 @@ import { polylineBounds, shapeBounds, shapeToPolylines } from './lib/geometry'
 import { differingFields, effectiveBit, findBit, findMaterial, overrideError, recommendedSettings, vbitMaxDepth, vcarveBit } from './lib/library'
 import type { Units } from './lib/units'
 import type { SimResult } from './preview/sim'
-import { defaultCut, fitOrigin, newId, newProject, validCut, type BitOverride, type BitRole, type Cut, type CutSettings, type Origin, type Project, type Shape, type ShapePatch } from './model'
+import { defaultCut, fitOrigin, LIMITS, newId, newProject, validCut, type BitOverride, type BitRole, type Cut, type CutSettings, type Origin, type Project, type Shape, type ShapePatch } from './model'
 
 export type Step = 'design' | 'simulate' | 'export'
 export type Screen = 'home' | 'editor'
@@ -97,6 +97,8 @@ function recommended(p: Project): Project {
 }
 
 let gesture = 0
+
+const withMinSafeZ = (c: CutSettings): CutSettings => ({ ...c, safeZ: Math.max(LIMITS.safeZ, c.safeZ) })
 
 export const useAppStore = create<AppState>()((set, get) => {
   // During a transient gesture, edits replace the project without recording history; commit() records one entry.
@@ -233,7 +235,8 @@ export const useAppStore = create<AppState>()((set, get) => {
     // Through cuts stay through when the stock gets thicker; deeper cuts are clamped when it gets thinner.
     setStock: (patch) =>
       setProject((p) => {
-        const stock = { ...p.stock, ...patch }
+        const s = { ...p.stock, ...patch }
+        const stock = { w: Math.max(LIMITS.stockSize, s.w), h: Math.max(LIMITS.stockSize, s.h), thickness: Math.max(LIMITS.thickness, s.thickness) }
         const t = stock.thickness
         const shapes = p.shapes.map((s) =>
           s.cut ? { ...s, cut: validCut(s, { ...s.cut, depth: s.cut.depth >= p.stock.thickness ? t : s.cut.depth }, t) } : s,
@@ -275,11 +278,12 @@ export const useAppStore = create<AppState>()((set, get) => {
     setCutSettings: (role, patch) =>
       setProject((p) =>
         p.cutSettings[role]
-          ? { ...p, cutSettings: { ...p.cutSettings, [role]: { ...p.cutSettings[role], ...patch } }, cutSettingsCustom: { ...p.cutSettingsCustom, [role]: true } }
+          ? { ...p, cutSettings: { ...p.cutSettings, [role]: withMinSafeZ({ ...p.cutSettings[role], ...patch }) }, cutSettingsCustom: { ...p.cutSettingsCustom, [role]: true } }
           : p,
       ),
     resetCutSettings: (role) => setProject((p) => recommended({ ...p, cutSettingsCustom: { ...p.cutSettingsCustom, [role]: false } })),
-    setMachine: (machine) => setProject((p) => recommended({ ...p, machine })),
+    setMachine: (m) =>
+      setProject((p) => recommended({ ...p, machine: { ...m, w: Math.max(LIMITS.travel, m.w), h: Math.max(LIMITS.travel, m.h), maxRpm: Math.max(LIMITS.maxRpm, m.maxRpm) } })),
     setCut: (ids, patch) =>
       setProject((p) => {
         const t = p.stock.thickness

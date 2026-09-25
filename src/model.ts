@@ -111,6 +111,9 @@ export interface CutSettings {
 
 export type BitRole = 'rough' | 'detail'
 
+// Smallest values the app accepts; the store clamps edits to them and the loader rejects anything below.
+export const LIMITS = { stockSize: 1, thickness: 0.2, travel: 1, maxRpm: 1, safeZ: 0.5 }
+
 export const MAX_STEPOVER = 0.5 // beyond this, successive pocket rings can leave a nub between them
 
 // `side` (outline only) is relative to the shape's filled region: holes come from nesting/winding (fillRule),
