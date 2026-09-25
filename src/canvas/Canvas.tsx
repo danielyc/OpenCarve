@@ -2,7 +2,7 @@ import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { opKey, type Op, type Pt3 } from '../cam/toolpath'
 import { icons } from '../icons'
 import { FONTS, loadFont } from '../lib/fonts'
-import { dominantScale, fitText, localBounds, polylineBounds, scaleShape, shapeBounds, shapeToPolylines, tabPositions, toLocal, toWorld, type Bounds } from '../lib/geometry'
+import { dominantScale, fitText, localBounds, polylineBounds, scaleShape, shapeBounds, shapeToPolylines, toLocal, toWorld, type Bounds } from '../lib/geometry'
 import { formatLength } from '../lib/units'
 import { DEFAULT_TEXT_LAYOUT, newId, tabsActive, type Point, type Polyline, type Shape } from '../model'
 import { TOOL_KEYS, useAppStore, type Align, type Tool } from '../store'
@@ -155,6 +155,10 @@ export default function Canvas() {
   const status = useAppStore((s) => s.status)
   const step = useAppStore((s) => s.step)
   const cam = useAppStore((s) => (s.step === 'simulate' ? s.cam : null))
+  // Tabs come from the planner; the last result stays up while a new one is planned (a reopened project has none yet).
+  const planned = useAppStore((s) => s.cam)
+  const [planKnown, setPlanKnown] = useState(planned)
+  if (planned && planned !== planKnown) setPlanKnown(planned)
   const highlight = useAppStore((s) => s.highlightOp)
   const [showRapids, setShowRapids] = useState(false)
   const hl = cam?.ops.find((o) => opKey(o) === highlight && selection.includes(o.shapeId))
@@ -430,8 +434,8 @@ export default function Canvas() {
             const polys = shapeToPolylines(s)
             const cls = selection.includes(s.id) ? 'selected' : hover === s.id ? 'hover' : ''
             const { cut } = s
-            // Tabs are shown per contour so every separate piece is visibly held.
-            const tabs = cut && tabsActive(cut, stock.thickness) ? polys.flatMap((p) => tabPositions([p], cut.tabCount)) : []
+            // Tab marks sit on the tool-centre loop, where the planner put them.
+            const tabs = cut && tabsActive(cut, stock.thickness) ? (planKnown?.ops ?? []).filter((o) => o.shapeId === s.id).flatMap((o) => o.tabs ?? []) : []
             const w = (cut?.tabWidth ?? 0) / 2
             return (
               <g key={s.id} data-id={s.id} data-cut={cut?.type ?? 'none'} data-side={cut?.type === 'outline' ? cut.side : undefined} className={`shape ${cls}`}>
@@ -444,12 +448,10 @@ export default function Canvas() {
                     fillRule: s.fillRule,
                   }}
                 />
-                {tabs.length > 0 && (
-                  <path
-                    className="tab"
-                    d={tabs.map(({ point: [x, y], tangent: [tx, ty] }) => `M${x - tx * w} ${y - ty * w}L${x + tx * w} ${y + ty * w}`).join('')}
-                  />
-                )}
+                {tabs.map(({ x, y, angle }, i) => {
+                  const [tx, ty] = [Math.cos(angle) * w, Math.sin(angle) * w]
+                  return <path key={i} data-tab className="tab" d={`M${x - tx} ${y - ty}L${x + tx} ${y + ty}`} />
+                })}
               </g>
             )
           })}

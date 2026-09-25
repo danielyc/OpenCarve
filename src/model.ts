@@ -118,7 +118,7 @@ export const MAX_STEPOVER = 0.5 // beyond this, successive pocket rings can leav
 
 // `side` (outline only) is relative to the shape's filled region: holes come from nesting/winding (fillRule),
 // so "outside" cuts outside the outer contours and inside the holes, not outside every contour.
-// Tabs are placed per contour (tabPositions on each polyline); tabHeight is measured up from the stock bottom.
+// Tabs go on every closed cut loop (see loopTabs in cam/toolpath); tabHeight is measured up from the stock bottom.
 // `tabs` is the user's choice; tabsActive() says whether it applies.
 export interface Cut {
   type: 'outline' | 'pocket' | 'vcarve'

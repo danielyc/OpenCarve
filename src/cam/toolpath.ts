@@ -14,7 +14,7 @@ import {
   type PathsD,
   type PolyPathD,
 } from 'clipper2-ts'
-import { polylineBounds, shapeToPolylines, tabPositions } from '../lib/geometry'
+import { polylineBounds, shapeToPolylines } from '../lib/geometry'
 import { effectiveBit, vbitMaxDepth } from '../lib/library'
 import { formatLength } from '../lib/units'
 import { MAX_STEPOVER, tabsActive, type BitRole, type Cut, type CutSettings, type Point, type Project, type Shape } from '../model'
@@ -33,8 +33,11 @@ export interface Op {
   shapeId: string
   kind: 'outline' | 'pocket' | 'pocket-detail' | 'vcarve' | 'vcarve-clear'
   segments: Segment[]
+  tabs?: Tab[] // outline ops with tabs
   timeSec?: number // set by planProject
 }
+// A tab's middle on the tool-centre loop and the loop's direction there (radians from +X).
+export type Tab = { x: number; y: number; angle: number }
 export const opKey = (o: Op) => `${o.shapeId}:${o.kind}:${o.role}`
 
 export interface CamResult {
@@ -116,36 +119,24 @@ function arcLengths(pts: Point[]) {
 
 const lerpPt = (a: Point, b: Point, t: number): Point => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]
 
-// Distance from p to a polyline and the arc length of the closest point on it.
-function nearest(pts: Point[], cum: number[], [x, y]: Point) {
-  let best = { d: Infinity, s: 0 }
-  for (let i = 1; i < pts.length; i++) {
-    const [a, b] = [pts[i - 1], pts[i]]
-    const len = cum[i] - cum[i - 1]
-    const t = len ? Math.min(1, Math.max(0, ((x - a[0]) * (b[0] - a[0]) + (y - a[1]) * (b[1] - a[1])) / (len * len))) : 0
-    const [px, py] = lerpPt(a, b, t)
-    const d = Math.hypot(x - px, y - py)
-    if (d < best.d) best = { d, s: cum[i - 1] + t * len }
-  }
-  return best
-}
-
-// Tabs go where the canvas draws them (tabPositions on the design outline), projected onto this loop.
-// The loop is restarted in the middle of the widest gap between tabs so the plunge never lands on one.
-export function placeTabs(pts: Point[], tabPoints: Point[]): { pts: Point[]; centres: number[] } {
-  if (!tabPoints.length) return { pts, centres: [] }
+// Tabs on one closed tool-centre loop: the shape's tabCount on its longest loop (longest), proportionally fewer on
+// shorter ones but at least one, evenly spaced by arc length starting half a spacing in so the plunge at the loop's
+// start never lands on a tab. At most half the loop is tab; a loop under 2 tab widths gets one tab of up to half its
+// length, one under a tab width none.
+export function loopTabs(pts: Point[], count: number, longest: number, width: number) {
   const cum = arcLengths(pts)
   const total = cum.at(-1)!
-  const s = tabPoints.map((p) => nearest(pts, cum, p).s).sort((a, b) => a - b)
-  let s0 = 0
-  let gap = -1
-  s.forEach((a, i) => {
-    const b = i + 1 < s.length ? s[i + 1] : s[0] + total
-    if (b - a > gap) [gap, s0] = [b - a, (a + (b - a) / 2) % total]
+  if (total < width) return { centres: [], width, tabs: [] }
+  const w = Math.min(width, total / 2)
+  const n = Math.max(1, Math.min(Math.round((count * total) / longest), Math.floor(total / 2 / w)))
+  const centres = Array.from({ length: n }, (_, i) => ((i + 0.5) * total) / n)
+  const tabs = centres.map((c): Tab => {
+    const j = Math.max(1, cum.findIndex((a) => a >= c))
+    const [a, b] = [pts[j - 1], pts[j]]
+    const [x, y] = lerpPt(a, b, cum[j] > cum[j - 1] ? (c - cum[j - 1]) / (cum[j] - cum[j - 1]) : 0)
+    return { x, y, angle: Math.atan2(b[1] - a[1], b[0] - a[0]) }
   })
-  const j = Math.max(1, cum.findIndex((c) => c > s0)) - 1
-  const p = lerpPt(pts[j], pts[j + 1], cum[j + 1] > cum[j] ? (s0 - cum[j]) / (cum[j + 1] - cum[j]) : 0)
-  return { pts: [p, ...pts.slice(j + 1, -1), ...pts.slice(0, j + 1), p], centres: s.map((a) => (a - s0 + total) % total) }
+  return { centres, width: w, tabs }
 }
 
 // Raises Z to tabZ over width around each centre (arc length along the closed loop pts).
@@ -376,8 +367,8 @@ export function planProject(project: Project): CamResult {
     if (b.minX < 0 || b.minY < 0 || b.maxX > stock.w || b.maxY > stock.h) warnings.push(`${shape.name} is partly outside the stock`)
     const region = shapeRegion(shape)
     const tooLarge = `Bit too large for ${shape.name}`
-    const push = (list: Op[], role: BitRole, kind: Op['kind'], segments: Segment[]) =>
-      segments.length && list.push({ role, shapeId: shape.id, kind, segments })
+    const push = (list: Op[], role: BitRole, kind: Op['kind'], segments: Segment[], tabs: Tab[] = []) =>
+      segments.length && list.push({ role, shapeId: shape.id, kind, segments, ...(tabs.length && { tabs }) })
 
     if (cut.type === 'vcarve') {
       const vs = cutSettings[vRole!]!
@@ -422,24 +413,15 @@ export function planProject(project: Project): CamResult {
       const tabZ = tabsActive(cut, t) ? -(t - cut.tabHeight) : null
       const zs = zLevels(depth, rs.stepdown)
       const loops = paths.map((path) => closedPts(orient(path, areaD(path) > 0 !== inside, rs.direction)))
-      const tabsFor = loops.map((): Point[] => [])
-      if (tabZ !== null && loops.length) {
-        for (const { point } of polys.filter((p) => p.closed).flatMap((p) => tabPositions([p], cut.tabCount))) {
-          const d = loops.map((l) => nearest(l, arcLengths(l), point).d)
-          const k = d.indexOf(Math.min(...d))
-          if (cut.side !== 'outside' || areaD(paths[k]) > 0) tabsFor[k].push(point) // tabs on outside-cut holes only hold scrap
-        }
-        // At most half of each loop is tab.
-        tabsFor.forEach((tabs, k) => {
-          const max = Math.floor(arcLengths(loops[k]).at(-1)! / 2 / cut.tabWidth)
-          if (tabs.length > max) tabsFor[k] = Array.from({ length: max }, (_, i) => tabs[Math.floor((i * tabs.length) / max)])
-        })
-      }
+      const longest = Math.max(...loops.map((l) => arcLengths(l).at(-1)!))
+      const tabs: Tab[] = []
       const L = linker(rs.safeZ)
-      loops.forEach((loop, k) => {
-        const { pts, centres } = placeTabs(loop, tabsFor[k])
+      loops.forEach((pts) => {
+        const lt = tabZ === null ? null : loopTabs(pts, cut.tabCount, longest, cut.tabWidth)
+        if (lt && !lt.centres.length) warnings.push(`Loop too small for a tab in ${shape.name}`)
+        tabs.push(...(lt?.tabs ?? []))
         zs.forEach((z, i) => {
-          const pass = tabZ !== null && z < tabZ && centres.length ? withTabs(pts, z, tabZ, centres, cut.tabWidth) : pts.map((p): Pt3 => [...p, z])
+          const pass = lt?.centres.length && z < tabZ! ? withTabs(pts, z, tabZ!, lt.centres, lt.width) : pts.map((p): Pt3 => [...p, z])
           L.moveTo(pass[0], i > 0)
           L.cut(pass.slice(1))
         })
@@ -453,7 +435,7 @@ export function planProject(project: Project): CamResult {
       }
       const holdBack = cut.side !== 'inside' && cut.depth >= t
       if (holdBack && tabZ === null) freed = true
-      push(holdBack ? last : ops, 'rough', 'outline', L.finish())
+      push(holdBack ? last : ops, 'rough', 'outline', L.finish(), tabs)
       continue
     }
 

@@ -120,25 +120,3 @@ export function scaleShape(shape: Shape, sx: number, sy: number): Shape {
       return { ...shape, w: shape.w * Math.abs(sx), h: shape.h * Math.abs(sy) }
   }
 }
-
-// Evenly spaced by arc length over all polylines together, starting half a spacing in so tabs avoid the start corner.
-export function tabPositions(polys: Polyline[], count: number): { point: Point; tangent: Point }[] {
-  const segs = polys
-    .flatMap(({ points, closed }) => (closed ? points : points.slice(0, -1)).map((a, i): [Point, Point] => [a, points[(i + 1) % points.length]]))
-    .filter(([a, b]) => a[0] !== b[0] || a[1] !== b[1])
-  const lengths = segs.map(([a, b]) => Math.hypot(b[0] - a[0], b[1] - a[1]))
-  const total = lengths.reduce((a, b) => a + b, 0)
-  if (!total || count < 1) return []
-  const out = []
-  let i = 0
-  let start = 0
-  for (let k = 0; k < count; k++) {
-    const s = ((k + 0.5) * total) / count
-    while (start + lengths[i] < s) start += lengths[i++]
-    const [a, b] = segs[i]
-    const t = (s - start) / lengths[i]
-    const d = lengths[i]
-    out.push({ point: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t] as Point, tangent: [(b[0] - a[0]) / d, (b[1] - a[1]) / d] as Point })
-  }
-  return out
-}

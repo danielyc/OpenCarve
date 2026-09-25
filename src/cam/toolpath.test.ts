@@ -3,11 +3,10 @@ import { readFileSync } from 'node:fs'
 import { parse } from 'opentype.js'
 import { describe, expect, it } from 'vitest'
 import { glyphPolylines } from '../lib/fonts'
-import { shapeToPolylines, tabPositions } from '../lib/geometry'
 import { findBit, findMaterial, recommendedSettings } from '../lib/library'
 import { defaultCut, gcodeHeaderWarnings, newProject, type CompoundShape, type Point, type Project, type RectShape, type Shape } from '../model'
 import { toGcode } from './gcode'
-import { orient, outlinePaths, placeTabs, planProject, pocketRings, shapeRegion, withTabs, zLevels, type Op, type Pt3 } from './toolpath'
+import { loopTabs, orient, outlinePaths, planProject, pocketRings, shapeRegion, withTabs, zLevels, type Op, type Pt3 } from './toolpath'
 
 const area = (p: PathD) => p.reduce((a, q, i) => { const n = p[(i + 1) % p.length]; return a + q.x * n.y - n.x * q.y }, 0) / 2
 const bounds = (paths: PathsD) => {
@@ -82,32 +81,17 @@ describe('passes and tabs', () => {
       expect(len).toBeCloseTo(6, 3)
     }
   })
-  it.each([
-    ['100×60 rect', rect(100, 60)],
-    ['rotated ellipse', { ...rect(80, 40), type: 'ellipse', rotation: 30 } as Shape],
-  ])('tabs sit where the canvas draws them: %s', (_, shape) => {
-    const p = project([{ ...shape, cut: { ...defaultCut(12), tabCount: 5 } }])
-    const final12 = planProject(p).ops[0].segments.filter((s) => s.points.length > 2).at(-1)!.points
-    const mids: Point[] = []
-    final12.forEach((q, i) => {
-      if (q[2] !== -9 || final12[i - 1]?.[2] === -9) return
-      const end = final12.findIndex((r, j) => j > i && r[2] !== -9) - 1
-      mids.push([(q[0] + final12[end][0]) / 2, (q[1] + final12[end][1]) / 2])
-    })
-    const expected = tabPositions(shapeToPolylines(shape), 5).map((t) => t.point)
-    expect(mids).toHaveLength(5)
-    for (const e of expected) expect(Math.min(...mids.map((m) => Math.hypot(m[0] - e[0], m[1] - e[1])))).toBeLessThan(3)
+  it('tabs never cover the loop start, where the plunge is', () => {
+    const sq: Point[] = [[0, 0], [40, 0], [40, 20], [0, 20], [0, 0]]
+    for (const n of [1, 3, 5]) {
+      const { centres, width } = loopTabs(sq, n, 120, 6)
+      expect(centres).toHaveLength(n)
+      for (const c of centres) expect(c - width / 2 > 0 && c + width / 2 < 120).toBe(true)
+      const path = withTabs(sq, -12, -9, centres, width)
+      expect([path[0][2], path.at(-1)![2]]).toEqual([-12, -12])
+    }
   })
-  it('the plunge point is never on a tab', () => {
-    const { pts, centres } = placeTabs(
-      [[0, 0], [40, 0], [40, 20], [0, 20], [0, 0]],
-      [[1, 0], [39, 20]],
-    )
-    const path = withTabs(pts, -12, -9, centres, 4)
-    expect(path[0][2]).toBe(-12)
-    expect(path.at(-1)![2]).toBe(-12)
-    expect(path.filter((q) => q[2] === -9).length).toBeGreaterThanOrEqual(4)
-  })
+
 })
 
 // Distance to the shape's boundary and a non-zero inside test.
@@ -396,21 +380,121 @@ describe('ordering and tab limits', () => {
     expect(r.warnings).not.toContain('Bit too large for Rect')
     expect(r.ops.map((o) => o.kind)).toEqual(['pocket-detail'])
   })
-  const tabSections = (op: Op, tabZ: number) => {
-    const final = op.segments.filter((s) => !s.rapid).flatMap((s) => s.points)
-    return final.filter((q, i) => q[2] === tabZ && final[i - 1]?.[2] !== tabZ)
-  }
-  it('outside cuts put no tabs on holes', () => {
-    const ring: CompoundShape = { id: 'c', type: 'compound', name: 'C', x: 100, y: 100, rotation: 0, paths: [{ closed: true, points: [[-20, -20], [20, -20], [20, 20], [-20, 20]] }, { closed: true, points: [[-10, 10], [10, 10], [10, -10], [-10, -10]] }], cut: { ...defaultCut(12), tabCount: 8 } }
-    const starts = tabSections(planProject(project([ring])).ops[0], -9)
-    expect(starts.length).toBeGreaterThan(0)
-    for (const [x, y] of starts) expect(Math.max(Math.abs(x - 100), Math.abs(y - 100))).toBeGreaterThan(15)
-  })
   it('caps tabs at half of each loop', () => {
     // Loop about 40 + π·3.175 ≈ 50 mm: at most 4 tabs of 6 mm.
     const op = planProject(project([{ ...rect(10, 10), cut: { ...defaultCut(12), tabCount: 10 } }])).ops[0]
     const final = op.segments.filter((s) => s.points.length > 2).at(-1)!.points
     expect(final.filter((q, i) => q[2] === -9 && final[i - 1]?.[2] !== -9)).toHaveLength(4)
+  })
+})
+
+// Tabs are placed on the final cut loops: tool-centre offsets of the region, holes and scrap islands included.
+describe('tabs on every cut loop', () => {
+  const TAB_Z = -9 // 12 mm stock, 3 mm tabs
+  const R = 3.175 / 2
+  // Distance from pt to a closed loop and the arc length of the closest point on it.
+  const onLoop = ([x, y]: Point, loop: PathD) => {
+    let best = { d: Infinity, s: 0 }
+    let s = 0
+    loop.forEach((a, i) => {
+      const b = loop[(i + 1) % loop.length]
+      const len = Math.hypot(b.x - a.x, b.y - a.y)
+      const t = len ? Math.max(0, Math.min(1, ((x - a.x) * (b.x - a.x) + (y - a.y) * (b.y - a.y)) / len ** 2)) : 0
+      const d = Math.hypot(x - a.x - t * (b.x - a.x), y - a.y - t * (b.y - a.y))
+      if (d < best.d) best = { d, s: s + t * len }
+      s += len
+    })
+    return { ...best, total: s }
+  }
+  const loopIndex = (pt: Point, loops: PathsD) => loops.findIndex((l) => onLoop(pt, l).d < 0.01)
+  // Runs of feed moves raised to the tab height, each with its middle by arc length.
+  const raised = (op: Op) => {
+    const pts = op.segments.filter((s) => !s.rapid).flatMap((s) => s.points)
+    const runs: Pt3[][] = []
+    pts.forEach((q, i) => {
+      if (q[2] !== TAB_Z) return
+      if (pts[i - 1]?.[2] !== TAB_Z) runs.push([])
+      runs.at(-1)!.push(q)
+    })
+    return runs.map((run) => {
+      const cum = run.map((_, i) => run.slice(1, i + 1).reduce((a, q, j) => a + Math.hypot(q[0] - run[j][0], q[1] - run[j][1]), 0))
+      const half = cum.at(-1)! / 2
+      const j = Math.max(1, cum.findIndex((c) => c >= half))
+      const t = cum[j] > cum[j - 1] ? (half - cum[j - 1]) / (cum[j] - cum[j - 1]) : 0
+      const mid: Point = [run[j - 1][0] + (run[j][0] - run[j - 1][0]) * t, run[j - 1][1] + (run[j][1] - run[j - 1][1]) * t]
+      return { run, mid }
+    })
+  }
+  const plan = (shape: Shape) => {
+    const res = planProject(project([shape]))
+    const op = res.ops.find((o) => o.shapeId === shape.id)!
+    const loops = outlinePaths(shapeRegion(shape), shape.cut!.side, shape.cut!.side === 'on' ? 0 : R)
+    return { res, op, loops, tabs: (op.tabs ?? []).map((t): Point => [t.x, t.y]) }
+  }
+  // Every raised run lies on one cut loop, and the raises match op.tabs.
+  const assertRaisesMatchTabs = (op: Op, loops: PathsD, tabs: Point[]) => {
+    const mids = raised(op)
+    expect(mids.length).toBeGreaterThan(0)
+    for (const { run, mid } of mids) {
+      const k = loopIndex([run[0][0], run[0][1]], loops)
+      expect(k).toBeGreaterThanOrEqual(0)
+      for (const q of run) expect(onLoop([q[0], q[1]], loops[k]).d).toBeLessThan(0.01)
+      expect(Math.min(...tabs.map((t) => Math.hypot(t[0] - mid[0], t[1] - mid[1])))).toBeLessThan(0.5)
+    }
+    for (const t of tabs) expect(Math.min(...mids.map(({ mid }) => Math.hypot(t[0] - mid[0], t[1] - mid[1])))).toBeLessThan(0.5)
+  }
+  const perLoop = (loops: PathsD, tabs: Point[]) => loops.map((_, k) => tabs.filter((t) => loopIndex(t, loops) === k).length)
+
+  it('100×60 rect outside: 4 tabs evenly spaced on the offset loop', () => {
+    const { op, loops, tabs } = plan({ ...rect(100, 60), cut: { ...defaultCut(12), tabCount: 4 } })
+    expect(loops).toHaveLength(1)
+    expect(tabs).toHaveLength(4)
+    const at = tabs.map((t) => onLoop(t, loops[0]))
+    for (const { d } of at) expect(d).toBeLessThan(0.01)
+    const total = at[0].total
+    const s = at.map((a) => a.s).sort((a, b) => a - b)
+    s.forEach((a, i) => expect(Math.abs((i + 1 < s.length ? s[i + 1] : s[0] + total) - a - total / 4)).toBeLessThan(1))
+    for (const t of op.tabs!) expect(Math.abs(Math.cos(t.angle)) + Math.abs(Math.sin(t.angle))).toBeGreaterThan(0.99) // a unit direction
+    assertRaisesMatchTabs(op, loops, tabs)
+  })
+  it('rect with a hole, outside: the hole loop gets fewer tabs, but some', () => {
+    const shape: CompoundShape = { id: 'c', type: 'compound', name: 'C', x: 100, y: 100, rotation: 0, paths: [{ closed: true, points: [[-50, -30], [50, -30], [50, 30], [-50, 30]] }, { closed: true, points: [[-20, 20], [20, 20], [20, -20], [-20, -20]] }], cut: { ...defaultCut(12), tabCount: 4 } }
+    const { op, loops, tabs } = plan(shape)
+    expect(loops).toHaveLength(2)
+    const [outer, hole] = [loops.findIndex((l) => area(l) > 0), loops.findIndex((l) => area(l) < 0)]
+    const n = perLoop(loops, tabs)
+    expect(n[outer]).toBe(4)
+    expect(n[hole]).toBeGreaterThanOrEqual(1)
+    expect(n[hole]).toBeLessThan(n[outer])
+    assertRaisesMatchTabs(op, loops, tabs)
+  })
+  it('pieces closer than the bit: the enclosed scrap island is held too', () => {
+    // A U with a bar across its mouth 2 mm away (< 2r): the offsets merge and enclose the U's inside.
+    const u: Point[] = [[-30, -30], [30, -30], [30, 30], [20, 30], [20, -20], [-20, -20], [-20, 30], [-30, 30]]
+    const bar: Point[] = [[-30, 32], [30, 32], [30, 42], [-30, 42]]
+    const shape: CompoundShape = { id: 'u', type: 'compound', name: 'U', x: 100, y: 100, rotation: 0, paths: [{ closed: true, points: u }, { closed: true, points: bar }], cut: { ...defaultCut(12), tabCount: 4 } }
+    const { op, loops, tabs } = plan(shape)
+    expect(loops).toHaveLength(2)
+    expect(loops.some((l) => area(l) < 0)).toBe(true)
+    for (const n of perLoop(loops, tabs)) expect(n).toBeGreaterThanOrEqual(1)
+    expect(tabs.every((t) => loopIndex(t, loops) >= 0)).toBe(true)
+    assertRaisesMatchTabs(op, loops, tabs)
+  })
+  it('a loop shorter than a tab gets none and warns', () => {
+    const { res, op } = plan({ ...rect(1, 1), cut: { ...defaultCut(12), side: 'on' } })
+    expect(op.tabs).toBeUndefined()
+    expect(raised(op)).toHaveLength(0)
+    expect(res.warnings).toContain('Loop too small for a tab in Rect')
+  })
+  it('"e" in Roboto, outside: the counter is held', () => {
+    const buf = readFileSync(new URL('../../public/fonts/Roboto-Regular.ttf', import.meta.url))
+    const font = parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength))
+    const shape: CompoundShape = { id: 'e', type: 'compound', name: 'e', x: 100, y: 100, rotation: 0, paths: glyphPolylines(font, 'e', 40), cut: defaultCut(12) }
+    const { op, loops, tabs } = plan(shape)
+    const counter = loops.findIndex((l) => area(l) < 0)
+    expect(counter).toBeGreaterThanOrEqual(0)
+    expect(perLoop(loops, tabs)[counter]).toBeGreaterThanOrEqual(1)
+    assertRaisesMatchTabs(op, loops, tabs)
   })
 })
 

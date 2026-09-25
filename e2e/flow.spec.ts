@@ -55,6 +55,8 @@ test('designs, simulates, exports and reopens a two-bit sign', async ({ page }) 
   await expect(page.getByRole('slider', { name: 'Depth' })).toHaveAttribute('aria-valuetext', 'Through')
   const tabs = page.getByRole('checkbox', { name: 'Tabs' })
   await tabs.check()
+  // Tab marks come from the planned toolpaths, one per placed tab.
+  await expect(page.locator('[data-tab]')).toHaveCount(4)
 
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
   await page.getByLabel('Detail bit').selectOption('60-vbit')
