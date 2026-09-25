@@ -310,8 +310,16 @@ describe('v-carve', () => {
     const r = planProject(project([shape], '1/8-endmill', '90-vbit'))
     expect(r.ops.map((o) => [o.role, o.kind])).toEqual([
       ['rough', 'vcarve-clear'],
+      ['detail', 'vcarve-clear'],
       ['detail', 'vcarve'],
     ])
+    // The V-bit finishes only the floor corners the endmill can't reach, at the floor depth, inside the floor.
+    const floorCorners = [[74, 94], [126, 94], [74, 106], [126, 106]]
+    for (const [x, y, z] of cutPoints(r.ops[1])) {
+      expect(Math.min(...floorCorners.map(([cx, cy]) => Math.max(Math.abs(x - cx), Math.abs(y - cy))))).toBeLessThan(3)
+      expect(x > 74 - 1e-6 && x < 126 + 1e-6 && y > 94 - 1e-6 && y < 106 + 1e-6).toBe(true)
+      expect(z).toBeGreaterThanOrEqual(-4 - 1e-9)
+    }
     expect(r.warnings).toEqual([])
     const clear = cutPoints(r.ops[0])
     const b = bounds([clear.map(([x, y]) => ({ x, y }))])
@@ -319,14 +327,14 @@ describe('v-carve', () => {
     expect(b.h).toBeCloseTo(12 - 3.175, 1)
     expect(Math.min(...clear.map((q) => q[2]))).toBeCloseTo(-4)
     const { dist, insideRegion } = regionProbe(shape)
-    const pts = cutPoints(r.ops[1])
+    const pts = cutPoints(r.ops[2])
     for (const [x, y, z] of pts) {
       expect(z).toBeGreaterThanOrEqual(-4 - 1e-9)
       expect(Math.abs(z + Math.min(dist(x, y), 4))).toBeLessThan(0.06)
       expect(insideRegion(x, y) || dist(x, y) < 1e-6).toBe(true)
     }
     // The floor contour: a closed 52×12 loop at -4.
-    const floor = r.ops[1].segments.find((s) => s.points.length > 3 && s.points.every((q) => q[2] === -4))!
+    const floor = r.ops[2].segments.find((s) => s.points.length > 3 && s.points.every((q) => q[2] === -4))!
     expect(bounds([floor.points.map(([x, y]) => ({ x, y }))])).toEqual({ w: expect.closeTo(52, 2), h: expect.closeTo(12, 2) })
   })
   it('never cuts through: max depth is clamped to thickness - 0.5', () => {
@@ -341,6 +349,36 @@ describe('v-carve', () => {
       ['rough', 'vcarve'],
     ])
     expect(r.warnings).toEqual(['Add a flat endmill for a smoother V-carve floor'])
+  })
+  it('an endmill too large for the floor leaves it to the V-bit', () => {
+    const r = planProject(project([vcarve(60, 14, 4)], '1/4-endmill', '90-vbit'))
+    expect(r.ops.map((o) => [o.role, o.kind])).toEqual([
+      ['detail', 'vcarve-clear'],
+      ['detail', 'vcarve'],
+    ])
+    expect(r.warnings).toEqual(['The endmill is too large for the floor of Rect; the V-bit clears it'])
+  })
+  it.each([3, 12])('5-point star, max depth %i: never deeper than the clearance allows', (depth) => {
+    const points: Point[] = Array.from({ length: 10 }, (_, i) => {
+      const a = Math.PI / 2 + (i * Math.PI) / 5
+      return [(i % 2 ? 8 : 20) * Math.cos(a), (i % 2 ? 8 : 20) * Math.sin(a)]
+    })
+    const shape: Shape = { id: 's', type: 'path', name: 'Star', x: 100, y: 100, rotation: 0, closed: true, points, cut: { ...defaultCut(12), type: 'vcarve', depth } }
+    const k = Math.tan(Math.PI / 6)
+    const { dist } = regionProbe(shape)
+    const op = planProject(project([shape], '1/8-endmill', '60-vbit')).ops.find((o) => o.kind === 'vcarve')!
+    let prev: Pt3 | null = null
+    for (const seg of op.segments) {
+      for (const q of seg.points) {
+        if (prev && !seg.rapid) {
+          for (let i = 0; i <= 10; i++) {
+            const [x, y, z] = [0, 1, 2].map((j) => prev![j] + ((q[j] - prev![j]) * i) / 10)
+            expect(z).toBeGreaterThanOrEqual(-dist(x, y) / k - 0.03)
+          }
+        }
+        prev = q
+      }
+    }
   })
   it('without a V-bit: warning and no ops', () => {
     const r = planProject(project([vcarve(60, 20, 4)], '1/8-endmill', '1mm-endmill'))

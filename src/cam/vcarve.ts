@@ -22,13 +22,13 @@ export function medialAxis(region: PathsD, spacing = SPACING): { chains: MedialP
   const xy: number[] = []
   const prev: number[] = []
   const next: number[] = []
-  const convex: [number, number][] = []
+  const convex: { v: [number, number]; o: [number, number]; q: [number, number] }[] = [] // corner and its neighbours
   for (const path of region) {
     const start = xy.length / 2
     path.forEach((p, i) => {
       const q = path[(i + 1) % path.length]
       const o = path[(i + path.length - 1) % path.length]
-      if ((p.x - o.x) * (q.y - p.y) - (p.y - o.y) * (q.x - p.x) > 0) convex.push([p.x, p.y]) // left turn: interior is on the left
+      if ((p.x - o.x) * (q.y - p.y) - (p.y - o.y) * (q.x - p.x) > 0) convex.push({ v: [p.x, p.y], o: [o.x, o.y], q: [q.x, q.y] }) // left turn: interior on the left
       const n = Math.max(1, Math.ceil(dist(p.x, p.y, q.x, q.y) / s))
       for (let j = 0; j < n; j++) xy.push(p.x + ((q.x - p.x) * j) / n, p.y + ((q.y - p.y) * j) / n)
     })
@@ -68,6 +68,8 @@ export function medialAxis(region: PathsD, spacing = SPACING): { chains: MedialP
     const t = len2 ? Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / len2)) : 0
     return dist(x, y, ax + t * (bx - ax), ay + t * (by - ay))
   }
+  // Distance to the boundary segments on either side of the given samples.
+  const clearance = (x: number, y: number, gens: number[]) => Math.min(...gens.flatMap((g) => [segDist(x, y, prev[g], g), segDist(x, y, g, next[g])]))
 
   // Voronoi vertices = triangle circumcentres. R: distance to the generators; C: distance to the boundary segments
   // next to them (the true clearance, give or take a sagitta).
@@ -90,12 +92,12 @@ export function medialAxis(region: PathsD, spacing = SPACING): { chains: MedialP
     cx[t] = ax + ux
     cy[t] = ay + uy
     R[t] = Math.hypot(ux, uy)
-    C[t] = Math.min(...[a, b, c].flatMap((g) => [segDist(cx[t], cy[t], prev[g], g), segDist(cx[t], cy[t], g, next[g])]))
+    C[t] = clearance(cx[t], cy[t], [a, b, c])
     keep[t] = +(C[t] > 1e-3 && winding(cx[t], cy[t]) !== 0)
   }
 
   // Graph on kept triangles; one Voronoi edge per interior Delaunay edge (a, b).
-  const edges: [number, number][] = []
+  const edges: [number, number, number, number][] = [] // triangles t1, t2 and generating samples a, b
   const adj = new Map<number, number[]>()
   for (let e = 0; e < halfedges.length; e++) {
     const o = halfedges[e]
@@ -109,39 +111,54 @@ export function medialAxis(region: PathsD, spacing = SPACING): { chains: MedialP
     const h = dist(xy[2 * a], xy[2 * a + 1], xy[2 * b], xy[2 * b + 1]) / 2
     if (r - Math.sqrt(Math.max(0, r * r - h * h)) < SAGITTA) continue
     for (const t of [t1, t2]) adj.set(t, [...(adj.get(t) ?? []), edges.length])
-    edges.push([t1, t2])
+    edges.push([t1, t2, a, b])
   }
 
   // Chain edges into polylines: from every leaf/junction, then the remaining cycles.
   const used = new Uint8Array(edges.length)
   const deg = (t: number) => adj.get(t)!.length
+  // Clearance along an edge (distance to two points, or their segments) is convex, not linear: long edges get
+  // intermediate points with their exact clearance so interpolating between points never cuts too deep.
   const walk = (t: number, e: number) => {
-    const out = [t]
+    const from = t
+    const pts: MedialPoint[] = [[cx[t], cy[t], C[t]]]
     for (;;) {
       used[e] = 1
-      t = edges[e][0] === t ? edges[e][1] : edges[e][0]
-      out.push(t)
+      const [t1, t2, a, b] = edges[e]
+      const u = t
+      t = t1 === t ? t2 : t1
+      const n = Math.ceil(dist(cx[u], cy[u], cx[t], cy[t]) / s)
+      for (let j = 1; j < n; j++) {
+        const [x, y] = [cx[u] + ((cx[t] - cx[u]) * j) / n, cy[u] + ((cy[t] - cy[u]) * j) / n]
+        pts.push([x, y, clearance(x, y, [a, b])])
+      }
+      pts.push([cx[t], cy[t], C[t]])
       const nextEdge = deg(t) === 2 ? adj.get(t)!.find((f) => !used[f]) : undefined
-      if (nextEdge === undefined) return out
+      if (nextEdge === undefined) return { from, to: t, pts }
       e = nextEdge
     }
   }
-  const walks: number[][] = []
+  const walks: ReturnType<typeof walk>[] = []
   for (const [t, es] of adj) if (es.length !== 2) for (const e of es) if (!used[e]) walks.push(walk(t, e))
   edges.forEach(([t], e) => !used[e] && walks.push(walk(t, e)))
 
-  // Leaves near a convex corner run on into it (clearance 0) so corners are cut to a point.
-  const extend = (t: number): MedialPoint[] => {
+  // Leaves near a convex corner run on into it (clearance 0) so corners are cut to a point. Only when the leaf sits
+  // on the corner's bisector at its own clearance from both sides, where clearance falls linearly to the tip.
+  const lineDist = (p: MedialPoint, [ax, ay]: [number, number], [bx, by]: [number, number]) =>
+    Math.abs((bx - ax) * (p[1] - ay) - (by - ay) * (p[0] - ax)) / dist(ax, ay, bx, by)
+  const extend = (t: number, p: MedialPoint): MedialPoint[] => {
     if (deg(t) !== 1) return []
     let best: [number, number] | null = null
-    let bd = 3 * s
-    for (const v of convex) {
-      const d = dist(cx[t], cy[t], v[0], v[1])
-      if (d < bd) [best, bd] = [v, d]
+    let bd = Math.max(3 * s, 4 * p[2])
+    for (const { v, o, q } of convex) {
+      const d = dist(p[0], p[1], v[0], v[1])
+      // Beyond 3 s, only corners sharp enough to matter by the same sagitta rule (not every flattened-curve vertex).
+      const sharp = d <= 3 * s || p[2] * (1 - p[2] / d) >= SAGITTA
+      if (d < bd && sharp && Math.abs(lineDist(p, o, v) - p[2]) < 0.02 && Math.abs(lineDist(p, v, q) - p[2]) < 0.02) [best, bd] = [v, d]
     }
     return best ? [[best[0], best[1], 0]] : []
   }
-  const chains = walks.map((w) => [...extend(w[0]), ...simplify(w.map((t): MedialPoint => [cx[t], cy[t], C[t]])), ...extend(w.at(-1)!)])
+  const chains = walks.map(({ from, to, pts }) => [...extend(from, pts[0]), ...simplify(pts), ...extend(to, pts.at(-1)!)])
   return { chains: chains.filter((c) => c.length > 1), spacing: s }
 }
 

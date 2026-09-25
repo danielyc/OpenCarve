@@ -7,6 +7,13 @@ import { medialAxis, type MedialPoint } from './vcarve'
 const shape = (type: 'rect' | 'ellipse', w: number, h: number, rotation = 0) => ({ id: 's', type, name: 'S', x: 50, y: 50, rotation, w, h }) as Shape
 const sq = (s: number): Point[] => [[-s, -s], [s, -s], [s, s], [-s, s]]
 const ring: CompoundShape = { id: 'c', type: 'compound', name: 'C', x: 50, y: 50, rotation: 0, paths: [{ closed: true, points: sq(15) }, { closed: true, points: sq(10).reverse() }] }
+// 5-point star, tips at radius 20, inner corners at 8.
+const starPoints = Array.from({ length: 10 }, (_, i): Point => {
+  const a = Math.PI / 2 + (i * Math.PI) / 5
+  const r = i % 2 ? 8 : 20
+  return [r * Math.cos(a), r * Math.sin(a)]
+})
+const star = { id: 'st', type: 'path', name: 'Star', x: 50, y: 50, rotation: 0, closed: true, points: starPoints } as Shape
 const length = (c: MedialPoint[]) => c.slice(1).reduce((a, p, i) => a + Math.hypot(p[0] - c[i][0], p[1] - c[i][1]), 0)
 const total = (chains: MedialPoint[][]) => chains.reduce((a, c) => a + length(c), 0)
 // Closest point on any chain segment: [distance, interpolated clearance].
@@ -47,13 +54,26 @@ describe('medial axis', () => {
     ['20 mm circle', shape('ellipse', 20, 20)],
     ['rotated square', shape('rect', 20, 20, 30)],
     ['ring', ring],
+    ['5-point star', star],
   ])('stays inside with honest clearance: %s', (_, s) => {
     const region = shapeRegion(s)
     const { inside, dist } = probe(region)
     const { chains } = medialAxis(region)
-    for (const [x, y, c] of chains.flat()) {
-      expect(inside(x, y) || c === 0).toBe(true) // corner points sit on the boundary
-      expect(c).toBeLessThanOrEqual(dist(x, y) + 0.05)
+    // Along every segment too: the toolpath interpolates clearance linearly between points.
+    for (const c of chains) {
+      for (let i = 1; i < c.length; i++) {
+        for (let k = 0; k <= 10; k++) {
+          const [x, y, cl] = [0, 1, 2].map((j) => c[i - 1][j] + ((c[i][j] - c[i - 1][j]) * k) / 10)
+          expect(inside(x, y) || cl === 0).toBe(true) // corner points sit on the boundary
+          expect(cl).toBeLessThanOrEqual(dist(x, y) + 0.02)
+        }
+      }
+    }
+  })
+  it('star: every tip is cut to its point', () => {
+    const { chains } = medialAxis(shapeRegion(star))
+    for (const [x, y] of starPoints.filter((_, i) => i % 2 === 0)) {
+      expect(chains.flat().some((p) => Math.hypot(p[0] - 50 - x, p[1] - 50 - y) < 2e-3 && p[2] === 0)).toBe(true)
     }
   })
   it('40×10 rect: a spine plus four corner diagonals', () => {

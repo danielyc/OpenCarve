@@ -74,6 +74,9 @@ function islands(region: PathsD): PathsD[] {
   return out
 }
 
+// Morphological opening: what a disc of radius d can reach.
+const opening = (p: PathsD, d: number) => inflate(inflate(p, -d), d)
+
 export const outlinePaths = (region: PathsD, side: Cut['side'], r: number) => inflate(region, side === 'on' ? 0 : side === 'outside' ? r : -r)
 
 // Tool-centre rings, innermost first; the last one (offset -r) is the finishing wall.
@@ -368,16 +371,19 @@ export function planProject(project: Project): CamResult {
       const dmax = Math.min(cut.depth, t - 0.5) // never through
       const floor = inflate(region, -dmax * k)
       if (floor.length) {
-        // Flat floor: the other bit if it's a flat-ish cutter that fits, else the V-bit in rings spaced for 0.2 mm ridges.
-        // ponytail: an endmill leaves the floor's sharp corners (within its radius) to the V-bit's sloped cone; a
-        // V-bit rest pass there would finish them.
+        // Flat floor: the other bit if it's a flat-ish cutter that fits, then the V-bit over what it can't reach
+        // (corners, necks). V-bit rings are 0.4·tan(α/2) apart: ridges of about 0.2 mm, up to ~0.35 mm at corners.
+        const vRings = (area: PathsD) => pocketSegments(area, 2 * 0.2 * k, { ...vs, stepover: MAX_STEPOVER }, dmax)
         const oRole: BitRole = vRole === 'rough' ? 'detail' : 'rough'
         const oBit = bits[oRole] ? findBit(bits[oRole]!) : null
         const or = oBit && oBit.type !== 'vbit' && cutSettings[oRole] ? oBit.diameter / 2 : 0
-        if (or && inflate(floor, -or).length) push(ops, oRole, 'vcarve-clear', pocketSegments(floor, or, cutSettings[oRole]!, dmax))
-        else {
-          warnings.push('Add a flat endmill for a smoother V-carve floor')
-          push(ops, vRole!, 'vcarve-clear', pocketSegments(floor, 2 * 0.2 * k, { ...vs, stepover: MAX_STEPOVER }, dmax))
+        if (or && inflate(floor, -or).length) {
+          push(ops, oRole, 'vcarve-clear', pocketSegments(floor, or, cutSettings[oRole]!, dmax))
+          const rest = opening(boolean(ClipType.Difference, floor, opening(floor, or)), SLIVER)
+          if (rest.length) push(ops, vRole!, 'vcarve-clear', vRings(boolean(ClipType.Intersection, floor, inflate(rest, 0.8 * k))))
+        } else {
+          warnings.push(or ? `The endmill is too large for the floor of ${shape.name}; the V-bit clears it` : 'Add a flat endmill for a smoother V-carve floor')
+          push(ops, vRole!, 'vcarve-clear', vRings(floor))
         }
       }
       const { chains, spacing } = medialAxis(region)
@@ -431,8 +437,7 @@ export function planProject(project: Project): CamResult {
 
     push(ops, 'rough', 'pocket', pocketSegments(region, r, rs, depth))
     // Rest machining: what the rough bit's radius couldn't reach, widened so the detail bit can get in, clipped to the pocket.
-    const open = (p: PathsD, d: number) => inflate(inflate(p, -d), d)
-    const rest = open(boolean(ClipType.Difference, region, open(region, r)), SLIVER)
+    const rest = opening(boolean(ClipType.Difference, region, opening(region, r)), SLIVER)
     let detailed = false
     if (usableDetail) {
       const dr = detailBit.diameter / 2
