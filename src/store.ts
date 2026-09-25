@@ -34,6 +34,7 @@ interface AppState {
   camBusy: boolean
   sim: SimResult | null
   simBusy: boolean
+  highlightOp: string | null // opKey of the op picked in the Simulate panel
   setStep: (step: Step) => void
   addShape: (shape: Shape) => void
   addShapes: (shapes: Shape[]) => void
@@ -107,6 +108,7 @@ export const useAppStore = create<AppState>()((set, get) => {
     camBusy: false,
     sim: null,
     simBusy: false,
+    highlightOp: null,
     setStep: (step) => set({ step }),
 
     addShape: (shape) => get().addShapes([shape]),

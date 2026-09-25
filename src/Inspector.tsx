@@ -50,6 +50,13 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
+// The canvas arrow on each outline points to the side the bit runs on.
+const SIDE_HINTS: Record<string, string> = {
+  outside: 'Outside: the bit runs outside the line (arrow), so the part keeps its size.',
+  inside: 'Inside: the bit runs inside the line (arrow), so the hole keeps its size.',
+  on: 'On path: the bit centre follows the line.',
+}
+
 const BIT_TYPES = { endmill: 'Endmill', ballnose: 'Ballnose', vbit: 'V-bit' }
 
 // Native radios give arrow-key navigation; an empty value (mixed selection) leaves all unchecked.
@@ -131,6 +138,7 @@ function CutSection({ selected }: { selected: Shape[] }) {
             { value: 'inside', label: 'Inside', disabled: open },
             { value: 'on', label: 'On path' },
           ]}
+          hint={SIDE_HINTS[shared((s) => s.cut?.side ?? '')]}
           onChange={(side) => setCut({ side })}
         />
       )}

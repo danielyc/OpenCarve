@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
-import type { Op, Pt3 } from '../cam/toolpath'
+import { opKey, type Op, type Pt3 } from '../cam/toolpath'
 import { icons } from '../icons'
 import { FONTS, loadFont } from '../lib/fonts'
 import { dominantScale, fitText, localBounds, polylineBounds, scaleShape, shapeBounds, shapeToPolylines, tabPositions, toLocal, toWorld, type Bounds } from '../lib/geometry'
@@ -44,6 +44,24 @@ function toolpathD(ops: Op[]) {
     }
   }
   return d
+}
+
+// ponytail: judges outside/inside from the first contour's own winding, so an imported hole wound like an outer gets
+// a reversed arrow; the toolpath itself is right. Classify contours by nesting if that matters.
+// A short arrow from a quarter of the way along the first edge (clear of tabs and handles) towards the side the bit runs on.
+function sideArrow(polys: Polyline[], outside: boolean, len: number) {
+  const pts = polys.find((p) => p.closed && p.points.length > 2)?.points
+  const d = pts ? dist(pts[0], pts[1]) : 0
+  if (!pts || !d) return ''
+  const [a, b] = pts
+  const area = pts.reduce((sum, q, i) => sum + q[0] * pts[(i + 1) % pts.length][1] - pts[(i + 1) % pts.length][0] * q[1], 0)
+  const sgn = area > 0 === outside ? 1 : -1 // the right-hand normal points out of a CCW contour
+  const nx = (sgn * (b[1] - a[1])) / d
+  const ny = (-sgn * (b[0] - a[0])) / d
+  const m: Point = [a[0] + (b[0] - a[0]) / 4, a[1] + (b[1] - a[1]) / 4]
+  const tip: Point = [m[0] + nx * len, m[1] + ny * len]
+  const h = len * 0.35
+  return `M${m.join(' ')}L${tip.join(' ')}M${tip[0] - (nx + ny) * h} ${tip[1] - (ny - nx) * h}L${tip.join(' ')}L${tip[0] - (nx - ny) * h} ${tip[1] - (ny + nx) * h}`
 }
 
 const dist = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1])
@@ -130,8 +148,13 @@ export default function Canvas() {
   const view = useAppStore((s) => s.view)
   useAppStore((s) => s.fontsVersion)
   const status = useAppStore((s) => s.status)
+  const step = useAppStore((s) => s.step)
   const cam = useAppStore((s) => (s.step === 'simulate' ? s.cam : null))
-  const toolpaths = cam && toolpathD(cam.ops)
+  const highlight = useAppStore((s) => s.highlightOp)
+  const [showRapids, setShowRapids] = useState(false)
+  const hl = cam?.ops.find((o) => opKey(o) === highlight && selection.includes(o.shapeId))
+  const toolpaths = cam && toolpathD(cam.ops.filter((o) => o !== hl))
+  const hlPaths = hl && toolpathD([hl])
   const svgRef = useRef<SVGSVGElement>(null)
   const [drag, setDrag] = useState<Drag | null>(null)
   const [hover, setHover] = useState<string | null>(null)
@@ -362,6 +385,12 @@ export default function Canvas() {
           </button>
         ))}
         <span className="toolbar-gap" />
+        {cam && (
+          <label className="toolbar-check">
+            <input type="checkbox" checked={showRapids} onChange={(e) => setShowRapids(e.target.checked)} />
+            Show rapids
+          </label>
+        )}
         <button onClick={() => fitTo(svgRef.current)}>Fit view</button>
         <output className="zoom" aria-label="Zoom">{Math.round((zoom / PX_PER_MM_AT_100) * 100)}%</output>
       </div>
@@ -409,13 +438,24 @@ export default function Canvas() {
               </g>
             )
           })}
-          {toolpaths && (
-            <g className="toolpaths">
-              <path className="toolpath-rapid" d={toolpaths.rapid} />
-              <path className="toolpath-rough" d={toolpaths.rough} />
-              <path className="toolpath-detail" d={toolpaths.detail} />
-              <path className="toolpath-vcarve" d={toolpaths.vcarve} />
-            </g>
+          {step === 'design' && (
+            <path
+              className="side-arrows"
+              d={project.shapes
+                .map((s) => (s.cut?.type === 'outline' && s.cut.side !== 'on' ? sideArrow(shapeToPolylines(s), s.cut.side === 'outside', 14 / zoom) : ''))
+                .join('')}
+            />
+          )}
+          {[toolpaths, hlPaths].map(
+            (d, i) =>
+              d && (
+                <g key={i} className={i ? 'toolpaths highlight' : hlPaths ? 'toolpaths dimmed' : 'toolpaths'}>
+                  {showRapids && <path className="toolpath-rapid" d={d.rapid} />}
+                  <path className="toolpath-rough" d={d.rough} />
+                  <path className="toolpath-detail" d={d.detail} />
+                  <path className="toolpath-vcarve" d={d.vcarve} />
+                </g>
+              ),
           )}
           {preview && <path className="preview" d={pathD(shapeToPolylines(preview))} />}
           {penPreview.length > 1 && <path className="preview" fill="none" d={pathD([{ points: penPreview, closed: false }])} />}

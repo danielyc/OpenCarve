@@ -6,6 +6,7 @@ import { icons } from './icons'
 import Inspector from './Inspector'
 import { importSvg } from './lib/svgImport'
 import Preview3D from './preview/Preview3D'
+import SimulatePanel from './SimulatePanel'
 import { useAppStore, type Step, type Tool } from './store'
 
 const STEPS: { id: Step; label: string }[] = [
@@ -40,6 +41,7 @@ export default function App() {
   const setStep = useAppStore((s) => s.setStep)
   const tool = useAppStore((s) => s.tool)
   const setTool = useAppStore((s) => s.setTool)
+  const warnings = useAppStore((s) => s.cam?.warnings.length ?? 0)
   const fileRef = useRef<HTMLInputElement>(null)
   const [dropping, setDropping] = useState(false)
   useCam()
@@ -67,6 +69,11 @@ export default function App() {
           {STEPS.map((s) => (
             <button key={s.id} aria-pressed={step === s.id} onClick={() => setStep(s.id)}>
               {s.label}
+              {s.id === 'simulate' && warnings > 0 && (
+                <span className="step-badge" role="img" aria-label={`${warnings} warning${warnings > 1 ? 's' : ''}`}>
+                  {warnings}
+                </span>
+              )}
             </button>
           ))}
         </nav>
@@ -99,7 +106,7 @@ export default function App() {
         <Preview3D />
       </main>
       <aside className="panel">
-        {step === 'export' ? <ExportPanel /> : <Inspector />}
+        {step === 'export' ? <ExportPanel /> : step === 'simulate' ? <SimulatePanel /> : <Inspector />}
       </aside>
     </div>
   )

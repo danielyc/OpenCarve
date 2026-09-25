@@ -17,7 +17,7 @@ import {
 import { polylineBounds, shapeToPolylines, tabPositions } from '../lib/geometry'
 import { findBit } from '../lib/library'
 import { MAX_STEPOVER, tabsActive, type BitRole, type Cut, type CutSettings, type Point, type Project, type Shape } from '../model'
-import { opsTime } from './gcode'
+import { opTimes } from './gcode'
 import { medialAxis, SPACING, type MedialPoint } from './vcarve'
 
 export type Pt3 = [number, number, number]
@@ -32,7 +32,10 @@ export interface Op {
   shapeId: string
   kind: 'outline' | 'pocket' | 'pocket-detail' | 'vcarve' | 'vcarve-clear'
   segments: Segment[]
+  timeSec?: number // set by planProject
 }
+export const opKey = (o: Op) => `${o.shapeId}:${o.kind}:${o.role}`
+
 export interface CamResult {
   ops: Op[]
   warnings: string[]
@@ -330,12 +333,14 @@ function vcarveSegments(region: PathsD, chains: MedialPoint[][], k: number, dmax
 }
 
 export function planProject(project: Project): CamResult {
-  const { stock, bits, cutSettings } = project
+  const { stock, bits, cutSettings, machine } = project
   const t = stock.thickness
   const ops: Op[] = []
   const last: Op[] = [] // through outlines not cut inside, run after everything else so parts aren't freed early
   let freed = false // a held-back outline without tabs
   const warnings: string[] = []
+  if (stock.w > machine.w || stock.h > machine.h)
+    warnings.push(`Stock (${+stock.w.toFixed(1)}×${+stock.h.toFixed(1)} mm) is larger than the machine work area (${+machine.w.toFixed(1)}×${+machine.h.toFixed(1)} mm)`)
   const carved = project.shapes.filter((s) => s.cut)
   if (!carved.length) warnings.push('Nothing to carve')
   const rs = cutSettings.rough
@@ -455,7 +460,11 @@ export function planProject(project: Project): CamResult {
 
   const time = (role: BitRole) => {
     const s = cutSettings[role]
-    return s ? opsTime(ops.filter((o) => o.role === role), s) : 0
+    const mine = ops.filter((o) => o.role === role)
+    if (!s) return 0
+    const secs = opTimes(mine, s)
+    mine.forEach((o, i) => (o.timeSec = secs[i]))
+    return secs.reduce((a, b) => a + b, 0)
   }
   return { ops, warnings: [...new Set(warnings)], timeSec: { rough: time('rough'), detail: time('detail') } }
 }

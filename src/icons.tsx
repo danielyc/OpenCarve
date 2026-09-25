@@ -19,5 +19,6 @@ export const icons = {
   right: <Icon><path d="M14 1.5v13" /><rect x="2" y="3" width="10" height="4" /><rect x="6" y="9" width="6" height="4" /></Icon>,
   top: <Icon><path d="M1.5 2h13" /><rect x="3" y="4" width="4" height="10" /><rect x="9" y="4" width="4" height="6" /></Icon>,
   centerY: <Icon><path d="M1.5 8h13" /><rect x="3" y="3" width="4" height="10" /><rect x="9" y="5" width="4" height="6" /></Icon>,
+  warning: <Icon><path d="M8 2.2l6.2 11H1.8zM8 6.5v3M8 11.5v.01" /></Icon>,
   bottom: <Icon><path d="M1.5 14h13" /><rect x="3" y="2" width="4" height="10" /><rect x="9" y="6" width="4" height="6" /></Icon>,
 }

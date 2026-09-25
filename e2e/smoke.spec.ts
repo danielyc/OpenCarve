@@ -3,9 +3,11 @@ import { expect, test } from '@playwright/test'
 test('loads the app shell', async ({ page }) => {
   await page.goto('/')
   await expect(page).toHaveTitle('OpenCarve')
-  for (const name of ['Design', 'Simulate', 'Export']) {
+  for (const name of ['Design', 'Export']) {
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
   }
+  // The Simulate step carries a warning badge ("Nothing to carve").
+  await expect(page.getByRole('button', { name: 'Simulate 1 warning' })).toBeVisible()
 })
 
 test('draws a rectangle and undoes it', async ({ page }) => {
@@ -119,4 +121,31 @@ test('exports a V-carve with a V-bit as the detail bit', async ({ page }) => {
   await expect(page.getByRole('slider', { name: 'Max depth' })).toBeVisible()
   await page.getByRole('button', { name: 'Export', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Download detail G-code' })).toBeEnabled()
+})
+
+test('simulate lists ops and selects the shape', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Rectangle' }).click()
+  const box = (await page.getByLabel('Design canvas').boundingBox())!
+  await page.mouse.move(box.x + box.width / 2 - 50, box.y + box.height / 2 - 30)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 + 50, box.y + box.height / 2 + 30, { steps: 4 })
+  await page.mouse.up()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('[data-id].selected')).toHaveCount(0)
+
+  await page.getByRole('button', { name: /^Simulate/ }).click()
+  const rows = page.locator('.op-list').getByRole('button')
+  await expect(rows).toHaveCount(1)
+  await expect(rows.first()).toContainText('Outline outside')
+  await expect(page.getByText(/^about \d+:\d\d$/)).toBeVisible()
+  await rows.first().click()
+  await expect(rows.first()).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('[data-id].selected')).toHaveCount(1)
+  await expect(page.locator('.toolpaths.highlight')).toHaveCount(1)
+
+  await page.getByRole('button', { name: 'Design', exact: true }).click()
+  await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Rectangle')
+  await page.getByRole('button', { name: 'Export', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Download rough G-code' })).toBeEnabled()
 })

@@ -6,22 +6,25 @@ const RAPID_FEED = 2500 // mm/min, for the time estimate
 const SPINUP_SEC = 3
 const fmt = (n: number) => String(+n.toFixed(3))
 
-function walk(ops: Op[], start: Pt3, fn: (seg: Segment, from: Pt3, to: Pt3) => void) {
+function walk(ops: Op[], start: Pt3, fn: (seg: Segment, from: Pt3, to: Pt3, op: number) => void) {
   let pos = start
-  for (const op of ops) for (const seg of op.segments) for (const p of seg.points) {
-    fn(seg, pos, p)
-    pos = p
-  }
+  ops.forEach((op, i) => {
+    for (const seg of op.segments) for (const p of seg.points) {
+      fn(seg, pos, p, i)
+      pos = p
+    }
+  })
 }
 
 // Z-only moves down (plunges, stepping off a tab) use the plunge feed.
 const feedFor = (seg: Segment, a: Pt3, b: Pt3, s: CutSettings) =>
   seg.rapid ? RAPID_FEED : seg.plunge || (a[0] === b[0] && a[1] === b[1] && b[2] < a[2]) ? s.plunge : s.feed
 
-export function opsTime(ops: Op[], s: CutSettings): number {
-  let sec = ops.length ? SPINUP_SEC : 0
-  walk(ops, [0, 0, s.safeZ], (seg, a, b) => {
-    sec += (Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) / feedFor(seg, a, b, s)) * 60
+// Seconds per op, run in this order; the spin-up and the move to each op's start count towards that op.
+export function opTimes(ops: Op[], s: CutSettings): number[] {
+  const sec = ops.map((_, i) => (i ? 0 : SPINUP_SEC))
+  walk(ops, [0, 0, s.safeZ], (seg, a, b, i) => {
+    sec[i] += (Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) / feedFor(seg, a, b, s)) * 60
   })
   return sec
 }
