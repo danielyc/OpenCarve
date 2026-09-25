@@ -4,8 +4,8 @@ import { scaleShape, shapeBounds, shapeToPolylines } from './geometry'
 
 const base = { id: 'a', name: 'a', x: 50, y: 20, rotation: 0 }
 
-const close = (b: ReturnType<typeof shapeBounds>, e: typeof b) =>
-  (Object.keys(e) as (keyof typeof e)[]).forEach((k) => expect(b[k]).toBeCloseTo(e[k]))
+const close = (b: ReturnType<typeof shapeBounds>, e: typeof b, digits = 2) =>
+  (Object.keys(e) as (keyof typeof e)[]).forEach((k) => expect(b[k]).toBeCloseTo(e[k], digits))
 
 test('rect bounds', () => {
   close(shapeBounds({ ...base, type: 'rect', w: 40, h: 10 }), { minX: 30, minY: 15, maxX: 70, maxY: 25 })
@@ -31,8 +31,8 @@ test('polygon is inscribed in w × h', () => {
 
 test('ellipse bounds and segments', () => {
   const shape: Shape = { ...base, type: 'ellipse', w: 20, h: 10 }
-  close(shapeBounds(shape), { minX: 40, minY: 15, maxX: 60, maxY: 25 })
-  expect(shapeToPolylines(shape)[0].points).toHaveLength(64)
+  close(shapeBounds(shape), { minX: 40, minY: 15, maxX: 60, maxY: 25 }, 1)
+  expect(shapeToPolylines(shape)[0].points).toHaveLength(50)
 })
 
 test('path bounds and scaling', () => {

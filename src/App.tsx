@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import Canvas from './canvas/Canvas'
 import { icons } from './icons'
 import Inspector from './Inspector'
@@ -37,9 +37,25 @@ export default function App() {
   const tool = useAppStore((s) => s.tool)
   const setTool = useAppStore((s) => s.setTool)
   const fileRef = useRef<HTMLInputElement>(null)
+  const [dropping, setDropping] = useState(false)
 
   return (
-    <div className="app">
+    <div
+      className={dropping ? 'app dropping' : 'app'}
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes('Files')) return
+        e.preventDefault()
+        setDropping(true)
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false)
+      }}
+      onDrop={(e) => {
+        e.preventDefault()
+        setDropping(false)
+        void importFile(e.dataTransfer.files[0])
+      }}
+    >
       <header className="topbar">
         <h1 className="brand">OpenCarve</h1>
         <nav className="steps" aria-label="Workflow step">
@@ -73,14 +89,7 @@ export default function App() {
           }}
         />
       </aside>
-      <main
-        className="workspace"
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault()
-          void importFile(e.dataTransfer.files[0])
-        }}
-      >
+      <main className="workspace">
         <Canvas />
         <section className="preview3d">3D preview</section>
       </main>

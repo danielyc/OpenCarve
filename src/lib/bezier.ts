@@ -1,6 +1,6 @@
 import type { Point, Polyline } from '../model'
 
-const SEGMENTS = 12
+const TOLERANCE = 0.02 // mm
 
 export type PathCommand =
   | { type: 'M' | 'L'; x: number; y: number }
@@ -8,14 +8,21 @@ export type PathCommand =
   | { type: 'C'; x1: number; y1: number; x2: number; y2: number; x: number; y: number }
   | { type: 'Z' }
 
-export const flattenQuad = (a: Point, b: Point, c: Point, n = SEGMENTS) =>
+const secondDiff = (a: Point, b: Point, c: Point) => Math.hypot(a[0] - 2 * b[0] + c[0], a[1] - 2 * b[1] + c[1])
+
+// Segment counts from Wang's formula keep the chord error under TOLERANCE.
+export const quadSegments = (a: Point, b: Point, c: Point) => Math.max(1, Math.ceil(Math.sqrt(secondDiff(a, b, c) / (4 * TOLERANCE))))
+export const cubicSegments = (a: Point, b: Point, c: Point, d: Point) =>
+  Math.max(1, Math.ceil(Math.sqrt((0.75 * Math.max(secondDiff(a, b, c), secondDiff(b, c, d))) / TOLERANCE)))
+
+export const flattenQuad = (a: Point, b: Point, c: Point, n = quadSegments(a, b, c)) =>
   Array.from({ length: n }, (_, i): Point => {
     const t = (i + 1) / n
     const u = 1 - t
     return [u * u * a[0] + 2 * u * t * b[0] + t * t * c[0], u * u * a[1] + 2 * u * t * b[1] + t * t * c[1]]
   })
 
-export const flattenCubic = (a: Point, b: Point, c: Point, d: Point, n = SEGMENTS) =>
+export const flattenCubic = (a: Point, b: Point, c: Point, d: Point, n = cubicSegments(a, b, c, d)) =>
   Array.from({ length: n }, (_, i): Point => {
     const t = (i + 1) / n
     const u = 1 - t

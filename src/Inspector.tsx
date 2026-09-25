@@ -95,7 +95,7 @@ export default function Inspector() {
   const polygons = selected.every((s) => s.type === 'polygon')
   const texts = selected.every((s) => s.type === 'text')
   const updateText = (patch: { text?: string; font?: string; size?: number }) =>
-    update((s) => (s.type === 'text' ? fitText({ ...s, ...patch }) : s))
+    patch.text?.trim() !== '' && update((s) => (s.type === 'text' ? fitText({ ...s, ...patch }) : s))
 
   return (
     <>

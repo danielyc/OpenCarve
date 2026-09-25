@@ -178,7 +178,7 @@ export const useAppStore = create<AppState>()((set, get) => {
     commit: () =>
       set((s) => {
         const base = s.transientBase
-        if (!base || base === s.project) return { transientBase: null }
+        if (!base || JSON.stringify(base) === JSON.stringify(s.project)) return { transientBase: null }
         return { past: pushHistory(s.past, base), future: [], transientBase: null }
       }),
     cancelTransient: () =>

@@ -1,10 +1,10 @@
 import type { Point, Polyline, Shape, ShapeBase, TextShape } from '../model'
-import { unitGlyphs } from './fonts'
+import { textGlyphs } from './fonts'
 
 export type Bounds = { minX: number; minY: number; maxX: number; maxY: number }
 type Placement = Pick<ShapeBase, 'x' | 'y' | 'rotation'>
 
-const ELLIPSE_SEGMENTS = 64
+const TOLERANCE = 0.02 // mm
 const rad = (deg: number) => (deg * Math.PI) / 180
 
 export function toWorld({ x, y, rotation }: Placement, [px, py]: Point): Point {
@@ -41,16 +41,18 @@ export function localPolylines(shape: Shape): Polyline[] {
       const y = shape.h / 2
       return [{ closed: true, points: [[-x, -y], [x, -y], [x, y], [-x, y]] }]
     }
-    case 'ellipse':
+    case 'ellipse': {
+      const n = Math.max(8, Math.ceil(Math.PI / Math.acos(1 - TOLERANCE / Math.max(shape.w / 2, shape.h / 2))) || 8)
       return [
         {
           closed: true,
-          points: Array.from({ length: ELLIPSE_SEGMENTS }, (_, i) => {
-            const a = (i / ELLIPSE_SEGMENTS) * 2 * Math.PI
+          points: Array.from({ length: n }, (_, i) => {
+            const a = (i / n) * 2 * Math.PI
             return [(Math.cos(a) * shape.w) / 2, (Math.sin(a) * shape.h) / 2]
           }),
         },
       ]
+    }
     case 'polygon': {
       const unit = Array.from({ length: shape.sides }, (_, i): Point => {
         const a = Math.PI / 2 + (i / shape.sides) * 2 * Math.PI
@@ -68,11 +70,11 @@ export function localPolylines(shape: Shape): Polyline[] {
     case 'compound':
       return shape.paths
     case 'text': {
-      const polys = unitGlyphs(shape.font, shape.text) ?? []
+      const polys = textGlyphs(shape.font, shape.size, shape.text) ?? []
       const b = polylineBounds(polys)
       const cx = (b.minX + b.maxX) / 2
       const cy = (b.minY + b.maxY) / 2
-      return polys.map(({ closed, points }) => ({ closed, points: points.map(([x, y]) => [(x - cx) * shape.size, (y - cy) * shape.size]) }))
+      return polys.map(({ closed, points }) => ({ closed, points: points.map(([x, y]) => [x - cx, y - cy]) }))
     }
   }
 }
@@ -80,7 +82,11 @@ export function localPolylines(shape: Shape): Polyline[] {
 export const shapeToPolylines = (shape: Shape): Polyline[] =>
   localPolylines(shape).map(({ points, closed }) => ({ closed, points: points.map((p) => toWorld(shape, p)) }))
 
-export const shapeBounds = (shape: Shape) => polylineBounds(shapeToPolylines(shape))
+// A text shape whose font hasn't loaded yet has no polylines; its stored w × h box stands in.
+export function shapeBounds(shape: Shape) {
+  const polys = shapeToPolylines(shape)
+  return polylineBounds(polys.length || shape.type !== 'text' ? polys : shapeToPolylines({ ...shape, type: 'rect' }))
+}
 
 export const localBounds = (shape: Shape): Bounds =>
   shape.type === 'text'
@@ -93,6 +99,9 @@ export function fitText(shape: TextShape): TextShape {
   return b.minX > b.maxX ? { ...shape, w: 0, h: 0 } : { ...shape, w: b.maxX - b.minX, h: b.maxY - b.minY }
 }
 
+export const dominantScale = (sx: number, sy: number) =>
+  Math.abs(Math.log(Math.abs(sx))) >= Math.abs(Math.log(Math.abs(sy))) ? Math.abs(sx) : Math.abs(sy)
+
 export function scaleShape(shape: Shape, sx: number, sy: number): Shape {
   const scale = (points: Point[]) => points.map(([x, y]): Point => [x * sx, y * sy])
   switch (shape.type) {
@@ -101,8 +110,7 @@ export function scaleShape(shape: Shape, sx: number, sy: number): Shape {
     case 'compound':
       return { ...shape, paths: shape.paths.map((p) => ({ ...p, points: scale(p.points) })) }
     case 'text': {
-      const [ax, ay] = [Math.abs(sx), Math.abs(sy)]
-      const f = Math.abs(Math.log(ax)) >= Math.abs(Math.log(ay)) ? ax : ay
+      const f = dominantScale(sx, sy)
       return { ...shape, size: shape.size * f, w: shape.w * f, h: shape.h * f }
     }
     default:

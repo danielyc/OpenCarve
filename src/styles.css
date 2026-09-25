@@ -48,6 +48,11 @@ button:disabled {
   height: 100dvh;
 }
 
+.app.dropping {
+  outline: 3px dashed var(--accent);
+  outline-offset: -3px;
+}
+
 .topbar {
   grid-area: top;
   display: grid;
@@ -221,7 +226,7 @@ button:disabled {
 
 .shape path {
   fill: var(--shape-fill);
-  fill-rule: evenodd;
+  fill-rule: nonzero;
   stroke: var(--text);
   stroke-width: 1.5;
 }

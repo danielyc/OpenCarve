@@ -11,7 +11,7 @@ const size = (s: Shape) => {
   const b = shapeBounds(s)
   return [b.maxX - b.minX, b.maxY - b.minY]
 }
-const close = (a: number[], b: number[]) => a.forEach((v, i) => expect(v).toBeCloseTo(b[i], 3))
+const close = (a: number[], b: number[], digits = 3) => a.forEach((v, i) => expect(v).toBeCloseTo(b[i], digits))
 
 test('rect with transform, placed at (10, 10), y flipped', () => {
   const [r] = svg('<rect x="0" y="0" width="20" height="10" transform="rotate(90)"/>')
@@ -31,7 +31,7 @@ test('relative layout is preserved and Y is flipped', () => {
 test('path with cubic, arc and relative commands', () => {
   const [p] = svg('<path d="M10 50 c0 -20 40 -20 40 0 a20 20 0 0 1 -40 0 z"/>')
   expect(p.type).toBe('path')
-  close(size(p), [40, 15 + 20])
+  close(size(p), [40, 15 + 20], 1)
   expect(shapeToPolylines(p)[0].points.length).toBeGreaterThan(20)
 })
 
@@ -64,4 +64,23 @@ test('multi-subpath path imports as one compound shape', () => {
 
 test('rejects non-SVG input', () => {
   expect(() => importSvg('<html></html>')).toThrow()
+})
+
+test('viewBox scales uniformly (meet)', () => {
+  close(size(svg('<rect width="100" height="100"/>', 'viewBox="0 0 100 100" width="100mm" height="50mm"')[0]), [50, 50])
+})
+
+test('rounded rect, fill-rule and hidden elements', () => {
+  const [r, e, ...rest] = svg(
+    '<rect width="40" height="20" rx="30"/><g style="fill-rule: evenodd"><path d="M0 0h10v10h-10z M2 2h6v6h-6z"/></g>' +
+      '<rect width="5" height="5" display="none"/><g visibility="hidden"><rect width="5" height="5"/></g>',
+  )
+  expect(rest).toHaveLength(0)
+  close(size(r), [40, 20])
+  const pts = shapeToPolylines(r)[0].points
+  expect(pts.length).toBeGreaterThan(20)
+  // rx clamps to 20 and ry defaults to rx (clamped to 10): the corner at the bbox is cut away.
+  expect(pts.some(([x, y]) => Math.hypot(x - 10, y - 10) < 0.5)).toBe(false)
+  expect(r.fillRule).toBeUndefined()
+  expect(e.fillRule).toBe('evenodd')
 })

@@ -10,6 +10,7 @@ export interface ShapeBase {
   x: number
   y: number
   rotation: number
+  fillRule?: 'evenodd' // shapes use non-zero unless flagged
 }
 
 export interface RectShape extends ShapeBase {

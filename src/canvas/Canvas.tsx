@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { icons } from '../icons'
 import { FONTS, loadFont } from '../lib/fonts'
-import { fitText, localBounds, polylineBounds, scaleShape, shapeBounds, shapeToPolylines, toLocal, toWorld, type Bounds } from '../lib/geometry'
+import { dominantScale, fitText, localBounds, polylineBounds, scaleShape, shapeBounds, shapeToPolylines, toLocal, toWorld, type Bounds } from '../lib/geometry'
 import { formatLength } from '../lib/units'
 import { newId, type Point, type Polyline, type Shape } from '../model'
 import { useAppStore, type Align } from '../store'
@@ -67,7 +67,8 @@ function scaleFn(base: Shape[], frame: Frame, [hx, hy]: Point) {
     if (hy < 0) minY = Math.min(py, maxY - MIN_SIZE)
     let sx = w0 ? (maxX - minX) / w0 : 1
     let sy = h0 ? (maxY - minY) / h0 : 1
-    if (shift && hx && hy) sx = sy = Math.max(sx, sy)
+    if (base.length === 1 && base[0].type === 'text') sx = sy = dominantScale(sx, sy)
+    else if (shift && hx && hy) sx = sy = Math.max(sx, sy)
     return base.map((s) => {
       const [cx, cy] = toLocal(frame, [s.x, s.y])
       const [x, y] = toWorld(frame, [anchor[0] + (cx - anchor[0]) * sx, anchor[1] + (cy - anchor[1]) * sy])
@@ -161,7 +162,7 @@ export default function Canvas() {
       const r = svg.getBoundingClientRect()
       const cx = e.clientX - r.left
       const cy = e.clientY - r.top
-      const zoom = Math.min(200, Math.max(0.05, view.zoom * Math.exp(-e.deltaY * 0.002)))
+      const zoom = Math.min(200, Math.max(0.05, view.zoom * Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.002))))
       const f = zoom / view.zoom
       setView({ zoom, panX: cx - (cx - view.panX) * f, panY: cy - (cy - view.panY) * f })
     }
@@ -225,11 +226,9 @@ export default function Canvas() {
     if (e.button !== 0) return
     if (tool === 'text') {
       const font = FONTS[0].id
+      st.setTool('select')
       loadFont(font)
-        .then(() => {
-          st.addShape(fitText({ id: newId(), type: 'text', name: 'Text', text: 'Text', font, size: 20, w: 0, h: 0, x: p[0], y: p[1], rotation: 0 }))
-          st.setTool('select')
-        })
+        .then(() => st.addShape(fitText({ id: newId(), type: 'text', name: 'Text', text: 'Text', font, size: 20, w: 0, h: 0, x: p[0], y: p[1], rotation: 0 })))
         .catch(console.error)
       return
     }
@@ -370,7 +369,7 @@ export default function Canvas() {
             return (
               <g key={s.id} data-id={s.id} className={`shape ${cls}`}>
                 <path className="hit" d={pathD(polys)} />
-                <path d={pathD(polys)} style={polys.every((p) => p.closed) ? undefined : { fill: 'none' }} />
+                <path d={pathD(polys)} style={{ fill: polys.every((p) => p.closed) ? undefined : 'none', fillRule: s.fillRule }} />
               </g>
             )
           })}

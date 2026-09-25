@@ -12,6 +12,7 @@ export const FONTS = [
 const pending = new Map<string, Promise<Font>>()
 const loaded = new Map<string, Font>()
 const glyphCache = new Map<string, Polyline[]>()
+const CACHE_SIZE = 200
 let notify = () => {}
 export const onFontLoad = (fn: () => void) => (notify = fn)
 
@@ -29,6 +30,10 @@ export function loadFont(id: string): Promise<Font> {
         loaded.set(id, font)
         notify()
         return font
+      })
+      .catch((e) => {
+        pending.delete(id)
+        throw e
       })
     pending.set(id, p)
   }
@@ -54,15 +59,18 @@ export function glyphPolylines(font: Font, text: string, size: number): Polyline
   return out
 }
 
-// Cached at size 1 and scaled by the caller, so resizing doesn't grow the cache. Returns null (and starts loading) until the font is ready.
-export function unitGlyphs(fontId: string, text: string): Polyline[] | null {
+// Flattened at the real size (mm) so the tolerance holds. Returns null (and starts loading) until the font is ready.
+export function textGlyphs(fontId: string, size: number, text: string): Polyline[] | null {
   const font = loaded.get(fontId)
   if (!font) {
     if (!pending.has(fontId)) loadFont(fontId).catch(console.error)
     return null
   }
-  const key = `${fontId}|${text}`
+  const key = `${fontId}|${size}|${text}`
   let polys = glyphCache.get(key)
-  if (!polys) glyphCache.set(key, (polys = glyphPolylines(font, text, 1)))
+  if (!polys) {
+    if (glyphCache.size >= CACHE_SIZE) glyphCache.delete(glyphCache.keys().next().value!)
+    glyphCache.set(key, (polys = glyphPolylines(font, text, size)))
+  }
   return polys
 }
