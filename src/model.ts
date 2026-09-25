@@ -115,6 +115,8 @@ export interface Project {
   units: Units
   stock: { w: number; h: number; thickness: number }
   materialId: string
+  // Rough bit cuts everything it fits in. The detail bit, when set, finishes what the rough bit
+  // can't reach in pockets/outlines. A V-carve uses whichever role holds a V-bit (detail preferred).
   bits: { rough: string; detail?: string }
   cutSettings: { rough: CutSettings; detail?: CutSettings } // detail present iff bits.detail
   cutSettingsCustom: Record<BitRole, boolean> // false = follow recommendedSettings

@@ -199,7 +199,17 @@ export const useAppStore = create<AppState>()((set, get) => {
         return { ...p, stock, shapes }
       }),
     setMaterialId: (materialId) => setProject((p) => recommended({ ...p, materialId })),
-    setBits: (bits) => setProject((p) => recommended({ ...p, bits })),
+    setBits: (bits) =>
+      setProject((p) =>
+        recommended({
+          ...p,
+          bits,
+          cutSettingsCustom: {
+            rough: p.cutSettingsCustom.rough && bits.rough === p.bits.rough,
+            detail: p.cutSettingsCustom.detail && bits.detail === p.bits.detail,
+          },
+        }),
+      ),
     setCutSettings: (role, patch) =>
       setProject((p) =>
         p.cutSettings[role]
@@ -239,4 +249,4 @@ export const useAppStore = create<AppState>()((set, get) => {
   }
 })
 
-onFontLoad((error) => useAppStore.setState((s) => ({ fontsVersion: s.fontsVersion + 1, ...(error && { status: error }) })))
+onFontLoad((error) => useAppStore.setState((s) => ({ fontsVersion: s.fontsVersion + 1, status: error ?? null })))

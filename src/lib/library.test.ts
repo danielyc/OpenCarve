@@ -22,7 +22,7 @@ test('recommended settings scale with the bit and clamp stepdown', () => {
 test('feed and plunge follow the bit diameter, rpm the machine', () => {
   expect(recommendedSettings(mdf, findBit('1mm-endmill'), 24000).feed).toBeLessThanOrEqual(600)
   expect(recommendedSettings(mdf, findBit('1/4-endmill'), 24000)).toMatchObject({ feed: 2250, plunge: 750 })
-  expect(recommendedSettings(mdf, findBit('1/8-endmill'), 10000).rpm).toBe(10000)
+  expect(recommendedSettings(mdf, findBit('1/8-endmill'), 10000)).toMatchObject({ rpm: 10000, feed: 833 })
 })
 
 test('library ids are unique and every combination is sane', () => {

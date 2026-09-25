@@ -42,13 +42,14 @@ export const findMaterial = (id: string) => MATERIALS.find((m) => m.id === id) ?
 // V-bit stepdown is min(flat, 1.5) mm, or 1 mm for a sharp tip.
 export function recommendedSettings(material: Material, bit: Bit, maxRpm: number): CutSettings {
   const vbit = bit.type === 'vbit'
-  const f = vbit ? 1 : Math.min(1.5, Math.max(0.3, bit.diameter / 3.175))
+  const rpm = Math.min(material.rpm, maxRpm)
+  const f = (vbit ? 1 : Math.min(1.5, Math.max(0.3, bit.diameter / 3.175))) * (rpm / material.rpm)
   const stepdown = vbit ? (bit.flat ? Math.min(bit.flat, 1.5) : 1) : Math.round(Math.min(6, Math.max(0.2, material.stepdownFrac * bit.diameter)) * 10) / 10
   return {
     feed: Math.round(material.feed * f),
     plunge: Math.round(material.plunge * f),
     stepdown,
-    rpm: Math.min(material.rpm, maxRpm),
+    rpm,
     safeZ: 5,
     stepover: 0.4,
     direction: 'conventional',

@@ -146,9 +146,16 @@ test('each bit follows its recommendation until customised', () => {
   expect(cs().rough.rpm).toBe(18000)
   expect(cs().detail?.rpm).toBe(10000)
   store().resetCutSettings('rough')
-  expect(cs().rough).toMatchObject({ feed: 1200, stepdown: 1.6, rpm: 10000 })
+  expect(cs().rough).toMatchObject({ feed: 750, stepdown: 1.6, rpm: 10000 })
   store().setCutSettings('detail', { feed: 100 })
   store().setBits({ rough: '1/4-endmill' })
   expect(cs().detail).toBeUndefined()
   expect(store().project.cutSettingsCustom.detail).toBe(false)
+})
+
+test('custom settings are dropped when that role gets a different bit', () => {
+  store().setCutSettings('rough', { feed: 2000, stepdown: 3.2 })
+  store().setBits({ rough: '1/16-endmill' })
+  expect(store().project.cutSettingsCustom.rough).toBe(false)
+  expect(store().project.cutSettings.rough.stepdown).toBeLessThan(1)
 })
