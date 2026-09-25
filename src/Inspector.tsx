@@ -1,5 +1,6 @@
 import { useId, useRef, useState, type ReactNode } from 'react'
-import { FONTS, loadFont } from './lib/fonts'
+import { FontPicker } from './FontPicker'
+import { loadFont } from './lib/fonts'
 import { fitText, localBounds, scaleShape } from './lib/geometry'
 import { BITS, effectiveBit, findBit, findMaterial, MACHINES, MATERIALS, overrideError } from './lib/library'
 import { formatLength, mmToIn, parseLength, type Units } from './lib/units'
@@ -471,24 +472,15 @@ export default function Inspector() {
         {texts && (
           <>
             <Field wide live multiline label="Text" value={textValue((s) => s.text)} onCommit={(text) => updateText({ text })} />
-            <label className="field">
-              <span>Font</span>
-              <select
-                value={textValue((s) => s.font)}
-                onChange={(e) => {
-                  const font = e.target.value
-                  loadFont(font)
-                    .then(() => updateText({ font }))
-                    .catch(console.error)
-                }}
-              >
-                {FONTS.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <FontPicker
+              value={textValue((s) => s.font)}
+              text={textValue((s) => s.text)}
+              onChange={(font) =>
+                loadFont(font)
+                  .then(() => updateText({ font }))
+                  .catch(console.error)
+              }
+            />
             {lengthField('Size', (s) => (s.type === 'text' ? s.size : 0), (s, size) =>
               s.type === 'text' ? fitText({ ...s, size, ...(s.letterSpacing && { letterSpacing: (s.letterSpacing * size) / s.size }) }) : s,
             true)}

@@ -68,7 +68,7 @@ export default function ProjectMenu() {
         <div className="menu" onClick={() => menu.current?.removeAttribute('open')}>
           <button onClick={() => void createProject()}>New project</button>
           <OpenFileButton>Open file…</OpenFileButton>
-          <button onClick={() => downloadProject(useAppStore.getState().project)}>Save as file</button>
+          <button onClick={() => downloadProject(useAppStore.getState().project).catch((e: Error) => alert(`Could not save the file: ${e.message}`))}>Save as file</button>
         </div>
       </details>
     </div>

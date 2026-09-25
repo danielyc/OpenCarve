@@ -1,5 +1,5 @@
 import { defaultCut, MAX_STEPOVER, newId, newProject, validCut, type BitOverride, type BitRole, type Cut, type CutSettings, type Point, type Polyline, type Project, type Shape } from '../model'
-import { FONTS } from './fonts'
+import { FONTS, fontFamily, MAX_FONT_BYTES, type StoredFont } from './fonts'
 import { BITS, differingFields, effectiveBit, findBit, findMaterial, MATERIALS, overrideError, recommendedSettings } from './library'
 
 // A self-contained, versioned document: the same JSON is the download format and the IndexedDB record,
@@ -7,8 +7,24 @@ import { BITS, differingFields, effectiveBit, findBit, findMaterial, MATERIALS, 
 export const FILE_FORMAT = 'opencarve'
 export const FILE_VERSION = 1
 
-export const serializeProject = (project: Project): string =>
-  JSON.stringify({ format: FILE_FORMAT, version: FILE_VERSION, project }, null, 2)
+export type EmbeddedFonts = Record<string, Omit<StoredFont, 'id'>>
+
+export const uploadedFontIds = (p: Project) => [...new Set(p.shapes.flatMap((s) => (s.type === 'text' && s.font.startsWith('upload:') ? [s.font] : [])))]
+
+// Uploaded fonts travel inside the file (base64) so it opens on another browser; only those the text shapes use.
+export function serializeProject(project: Project, fonts: EmbeddedFonts = {}): string {
+  const used = uploadedFontIds(project).filter((id) => fonts[id])
+  const embedded = Object.fromEntries(used.map((id) => [id, { name: fonts[id].name, data: toBase64(fonts[id].data) }]))
+  return JSON.stringify({ format: FILE_FORMAT, version: FILE_VERSION, project, ...(used.length && { fonts: embedded }) }, null, 2)
+}
+
+const toBase64 = (buf: ArrayBuffer) => {
+  const bytes = new Uint8Array(buf)
+  let bin = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(bin)
+}
+const fromBase64 = (b64: string): ArrayBuffer => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer
 
 type Obj = Record<string, unknown>
 
@@ -87,7 +103,9 @@ function shape(v: unknown, i: number, thickness: number, warn: (msg: string) => 
       break
     case 'text': {
       let font = str(o, 'font', what, FONTS[0].id)
-      if (!FONTS.some((f) => f.id === font)) {
+      // Fontsource fonts load on demand; uploaded fonts are checked by parseProjectFile.
+      const known = font.startsWith('upload:') || /^fs:[a-z0-9-]+$/.test(font) || FONTS.some((f) => f.id === font)
+      if (!known) {
         warn(`Unknown font "${font}", using ${FONTS[0].name}.`)
         font = FONTS[0].id
       }
@@ -170,12 +188,50 @@ function overrides(v: unknown, bits: Project['bits'], warnings: string[]): NonNu
 
 // Recoverable problems (unknown material or font) fall back to defaults and are reported through `warnings`.
 export function parseProject(text: string, warnings: string[] = []): Project {
-  let data: unknown
+  return projectFromData(parseJson(text), warnings)
+}
+
+function parseJson(text: string): unknown {
   try {
-    data = JSON.parse(text)
+    return JSON.parse(text)
   } catch {
-    fail('not JSON')
+    return fail('not JSON')
   }
+}
+
+// parseProject plus the embedded fonts: each must decode, stay under 5 MB and parse. An uploaded font that is
+// neither validly embedded nor already stored (hasFont) falls back to Roboto with a warning.
+export async function parseProjectFile(
+  text: string,
+  warnings: string[] = [],
+  hasFont: (id: string) => Promise<boolean> = async () => false,
+): Promise<{ project: Project; fonts: EmbeddedFonts }> {
+  const data = parseJson(text)
+  const project = projectFromData(data, warnings)
+  const raw = isObj(data) && isObj(data.fonts) ? data.fonts : {}
+  const fonts: EmbeddedFonts = {}
+  const fallback = new Set<string>()
+  for (const id of uploadedFontIds(project)) {
+    const f = raw[id]
+    if (isObj(f) && typeof f.data === 'string') {
+      try {
+        if (f.data.length > (MAX_FONT_BYTES * 4) / 3 + 4) throw new Error('font is larger than 5 MB')
+        const buf = fromBase64(f.data)
+        const family = await fontFamily(buf)
+        fonts[id] = { name: typeof f.name === 'string' && f.name ? f.name : family, data: buf }
+        continue
+      } catch (e) {
+        warnings.push(`Embedded font "${String(f.name ?? id)}" is not usable (${(e as Error).message}).`)
+      }
+    }
+    if (!(await hasFont(id))) fallback.add(id)
+  }
+  if (fallback.size) warnings.push(`${fallback.size} uploaded font${fallback.size > 1 ? 's are' : ' is'} missing, using ${FONTS[0].name}.`)
+  const shapes = project.shapes.map((s) => (s.type === 'text' && fallback.has(s.font) ? { ...s, font: FONTS[0].id } : s))
+  return { project: { ...project, shapes }, fonts }
+}
+
+function projectFromData(data: unknown, warnings: string[]): Project {
   const file = obj(data, 'file')
   if (file.format !== FILE_FORMAT) fail('not an OpenCarve project')
   if (file.version !== FILE_VERSION) fail(`unsupported version ${String(file.version)} (this app reads version ${FILE_VERSION})`)

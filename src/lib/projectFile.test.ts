@@ -1,6 +1,7 @@
+import { readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
 import { defaultCut, newProject, type Project } from '../model'
-import { parseProject, serializeProject } from './projectFile'
+import { parseProject, parseProjectFile, serializeProject } from './projectFile'
 
 const sample = (): Project => ({
   ...newProject(),
@@ -78,6 +79,44 @@ test('clamps polygon sides and renames duplicate shape ids', () => {
   expect(p.shapes.map((s) => s.type === 'polygon' && s.sides)).toEqual([3, 64])
   expect(p.shapes[0].id).toBe('p')
   expect(p.shapes[1].id).not.toBe('p')
+})
+
+const robotoBuf = () => {
+  const b = readFileSync(new URL('../../public/fonts/Roboto-Regular.ttf', import.meta.url))
+  return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer
+}
+const textIn = (font: string, id = font) => ({ id, type: 'text' as const, name: 'T', x: 0, y: 0, rotation: 0, text: 'A', font, size: 10, w: 5, h: 7 })
+
+test('embeds only the uploaded fonts text shapes use, and round-trips them', async () => {
+  const data = robotoBuf()
+  const p = { ...sample(), shapes: [textIn('upload:a'), textIn('fs:lora', 'f')] }
+  const text = serializeProject(p, { 'upload:a': { name: 'Mine', data }, 'upload:b': { name: 'Unused', data } })
+  expect(Object.keys(JSON.parse(text).fonts)).toEqual(['upload:a'])
+  expect(JSON.parse(serializeProject(sample(), { 'upload:a': { name: 'Mine', data } })).fonts).toBeUndefined()
+  const warnings: string[] = []
+  const { project, fonts } = await parseProjectFile(text, warnings)
+  expect(warnings).toEqual([])
+  expect(project.shapes.map((s) => s.type === 'text' && s.font)).toEqual(['upload:a', 'fs:lora'])
+  expect(fonts['upload:a'].name).toBe('Mine')
+  expect(new Uint8Array(fonts['upload:a'].data)).toEqual(new Uint8Array(data))
+})
+
+test('uploaded fonts must be embedded validly or already stored, else fall back to Roboto', async () => {
+  const shapes = [textIn('upload:bad'), textIn('upload:big'), textIn('upload:stored'), textIn('upload:gone')]
+  const big = 'A'.repeat(7_000_000 + 4)
+  const text = file({ ...sample(), shapes }, { fonts: { 'upload:bad': { name: 'Bad', data: btoa('not a font') }, 'upload:big': { name: 'Big', data: big } } })
+  const warnings: string[] = []
+  const { project, fonts } = await parseProjectFile(text, warnings, async (id) => id === 'upload:stored')
+  expect(fonts).toEqual({})
+  expect(project.shapes.map((s) => s.type === 'text' && s.font)).toEqual(['roboto', 'roboto', 'upload:stored', 'roboto'])
+  expect(warnings).toEqual([expect.stringMatching(/"Bad"/), expect.stringMatching(/"Big".*5 MB/), expect.stringMatching(/3 uploaded fonts are missing/)])
+})
+
+test('fontsource ids are kept; malformed ones fall back', () => {
+  const warnings: string[] = []
+  const p = parseProject(file({ ...sample(), shapes: [textIn('fs:great-vibes'), textIn('fs:../x', 'y')] }), warnings)
+  expect(p.shapes.map((s) => s.type === 'text' && s.font)).toEqual(['fs:great-vibes', 'roboto'])
+  expect(warnings).toEqual([expect.stringMatching(/fs:\.\.\/x/)])
 })
 
 test('fills text layout defaults for old files and rejects out-of-range values', () => {

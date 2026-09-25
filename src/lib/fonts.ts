@@ -1,13 +1,189 @@
+import { del, get, set, update } from 'idb-keyval'
 import type { Font } from 'opentype.js'
 import type { Point, Polyline, TextShape } from '../model'
 import { commandsToPolylines, type PathCommand } from './bezier'
 
-export const FONTS = [
-  { id: 'roboto', name: 'Roboto', file: 'Roboto-Regular.ttf' },
-  { id: 'lora', name: 'Lora', file: 'Lora-Regular.ttf' },
-  { id: 'pacifico', name: 'Pacifico', file: 'Pacifico-Regular.ttf' },
-  { id: 'bebas', name: 'Bebas Neue', file: 'BebasNeue-Regular.ttf' },
+export type FontCategory = 'sans-serif' | 'serif' | 'display' | 'handwriting' | 'monospace'
+export const CATEGORIES: FontCategory[] = ['sans-serif', 'serif', 'display', 'handwriting', 'monospace']
+
+export const FONTS: { id: string; name: string; file: string; category: FontCategory }[] = [
+  { id: 'roboto', name: 'Roboto', file: 'Roboto-Regular.ttf', category: 'sans-serif' },
+  { id: 'open-sans', name: 'Open Sans', file: 'OpenSans-Regular.ttf', category: 'sans-serif' },
+  { id: 'montserrat', name: 'Montserrat', file: 'Montserrat-Regular.ttf', category: 'sans-serif' },
+  { id: 'oswald', name: 'Oswald', file: 'Oswald-Regular.ttf', category: 'sans-serif' },
+  { id: 'lora', name: 'Lora', file: 'Lora-Regular.ttf', category: 'serif' },
+  { id: 'source-serif-4', name: 'Source Serif 4', file: 'SourceSerif4-Regular.ttf', category: 'serif' },
+  { id: 'merriweather', name: 'Merriweather', file: 'Merriweather-Regular.ttf', category: 'serif' },
+  { id: 'cinzel', name: 'Cinzel', file: 'Cinzel-Regular.ttf', category: 'serif' },
+  { id: 'pacifico', name: 'Pacifico', file: 'Pacifico-Regular.ttf', category: 'handwriting' },
+  { id: 'dancing-script', name: 'Dancing Script', file: 'DancingScript-Regular.ttf', category: 'handwriting' },
+  { id: 'great-vibes', name: 'Great Vibes', file: 'GreatVibes-Regular.ttf', category: 'handwriting' },
+  { id: 'caveat', name: 'Caveat', file: 'Caveat-Regular.ttf', category: 'handwriting' },
+  { id: 'bebas', name: 'Bebas Neue', file: 'BebasNeue-Regular.ttf', category: 'display' },
+  { id: 'alfa-slab-one', name: 'Alfa Slab One', file: 'AlfaSlabOne-Regular.ttf', category: 'display' },
+  { id: 'righteous', name: 'Righteous', file: 'Righteous-Regular.ttf', category: 'display' },
+  { id: 'allerta-stencil', name: 'Allerta Stencil', file: 'AllertaStencil-Regular.ttf', category: 'display' },
 ]
+
+// Font ids: bundled ids are plain (`roboto`), uploads are `upload:<uuid>`, Fontsource fonts are `fs:<fontsource-id>`.
+export type FontKind = 'bundled' | 'upload' | 'fontsource'
+export interface FontSource {
+  kind: FontKind
+  label: string
+  load(): Promise<ArrayBuffer>
+}
+
+export const MAX_FONT_BYTES = 5 * 1024 * 1024
+const FS_ID = /^[a-z0-9-]+$/
+// Display names of uploaded and Fontsource fonts, filled in as their lists load.
+const labels = new Map<string, string>()
+
+async function fetchBuffer(url: string): Promise<ArrayBuffer> {
+  const r = await fetch(url)
+  if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`)
+  return r.arrayBuffer()
+}
+
+export function fontSource(id: string): FontSource {
+  if (id.startsWith('upload:')) {
+    return {
+      kind: 'upload',
+      label: labels.get(id) ?? 'Uploaded font',
+      load: async () => {
+        const f = await get<StoredFont>(uploadKey(id))
+        if (!f) throw new Error(`Font ${id} is not stored in this browser`)
+        return f.data
+      },
+    }
+  }
+  if (id.startsWith('fs:')) {
+    const fsId = id.slice(3)
+    return {
+      kind: 'fontsource',
+      label: labels.get(id) ?? fsId.replace(/(^|-)([a-z])/g, (_, dash: string, c: string) => (dash && ' ') + c.toUpperCase()),
+      load: async () => {
+        if (!FS_ID.test(fsId)) throw new Error(`Bad Fontsource id ${fsId}`)
+        const key = `opencarve:fscache:${fsId}`
+        const cached = await get<ArrayBuffer>(key).catch(() => undefined)
+        if (cached) return cached
+        // Every indexed font has a latin subset (see filterFontsourceIndex), so the latin file always exists.
+        const buf = await fetchBuffer(`https://cdn.jsdelivr.net/fontsource/fonts/${fsId}@latest/latin-400-normal.ttf`)
+        set(key, buf).catch(console.error)
+        return buf
+      },
+    }
+  }
+  const f = FONTS.find((f) => f.id === id) ?? FONTS[0]
+  return { kind: 'bundled', label: f.name, load: () => fetchBuffer(`${import.meta.env.BASE_URL}fonts/${f.file}`) }
+}
+
+// Validates untrusted font data (size cap, must parse) and returns its family name. opentype.js reads outlines
+// lazily, so every glyph is outlined once here: a corrupt table fails now rather than while laying out text.
+export async function fontFamily(data: ArrayBuffer): Promise<string> {
+  if (data.byteLength > MAX_FONT_BYTES) throw new Error('font is larger than 5 MB')
+  const font = (await import('opentype.js')).parse(data)
+  if (!font.unitsPerEm || !font.glyphs.length) throw new Error('not a usable font')
+  try {
+    for (let i = 0; i < font.glyphs.length; i++) font.glyphs.get(i).getPath(0, 0, 72)
+  } catch {
+    throw new Error('its glyph outlines are corrupt')
+  }
+  return font.getEnglishName('fontFamily')?.trim() || 'Custom font'
+}
+
+// Uploaded fonts: one IndexedDB record per font plus an index list of { id, name }.
+export interface StoredFont {
+  id: string
+  name: string
+  data: ArrayBuffer
+}
+export type FontEntry = Pick<StoredFont, 'id' | 'name'>
+const UPLOADS = 'opencarve:fonts'
+const uploadKey = (id: string) => `opencarve:font:${id}`
+
+export async function listUploadedFonts(): Promise<FontEntry[]> {
+  const list = (await get<FontEntry[]>(UPLOADS)) ?? []
+  for (const f of list) labels.set(f.id, f.name)
+  return list
+}
+export const getUploadedFont = (id: string) => get<StoredFont>(uploadKey(id))
+
+export async function storeUploadedFont(f: StoredFont) {
+  await set(uploadKey(f.id), f)
+  await update<FontEntry[]>(UPLOADS, (list = []) => [...list.filter((e) => e.id !== f.id), { id: f.id, name: f.name }])
+  labels.set(f.id, f.name)
+}
+
+export async function uploadFont(file: File): Promise<FontEntry> {
+  if (file.size > MAX_FONT_BYTES) throw new Error('font is larger than 5 MB')
+  const data = await file.arrayBuffer()
+  const entry = { id: `upload:${crypto.randomUUID()}`, name: await fontFamily(data) }
+  await storeUploadedFont({ ...entry, data })
+  return entry
+}
+
+export async function removeUploadedFont(id: string) {
+  await del(uploadKey(id))
+  await update<FontEntry[]>(UPLOADS, (list = []) => list.filter((e) => e.id !== id))
+}
+
+// Fontsource index (https://api.fontsource.org/v1/fonts), cached in IndexedDB for a week.
+export interface FsFont {
+  id: string
+  family: string
+  category: string
+  license: string
+}
+const FS_LICENSES = ['OFL-1.1', 'Apache-2.0', 'UFL-1.0']
+const INDEX_KEY = 'opencarve:fsindex'
+const INDEX_TTL = 7 * 24 * 3600 * 1000
+
+// Keeps Google Fonts with a latin subset, an upright regular (400 normal) and a permissive licence.
+export function filterFontsourceIndex(raw: unknown): FsFont[] {
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((f): FsFont[] => {
+    if (typeof f !== 'object' || f === null) return []
+    const { id, family, category, license, subsets, weights, styles, type } = f as Record<string, unknown>
+    const ok =
+      typeof id === 'string' &&
+      FS_ID.test(id) &&
+      typeof family === 'string' &&
+      typeof license === 'string' &&
+      FS_LICENSES.includes(license) &&
+      Array.isArray(subsets) &&
+      subsets.includes('latin') &&
+      Array.isArray(weights) &&
+      weights.includes(400) &&
+      Array.isArray(styles) &&
+      styles.includes('normal') &&
+      type === 'google'
+    return ok ? [{ id, family, category: typeof category === 'string' ? category : 'other', license }] : []
+  })
+}
+
+let fsIndex: Promise<FsFont[]> | null = null
+export function fontsourceIndex(): Promise<FsFont[]> {
+  fsIndex ??= (async () => {
+    const cached = await get<{ at: number; fonts: FsFont[] }>(INDEX_KEY).catch(() => undefined)
+    let fonts = cached?.fonts
+    if (!cached || Date.now() - cached.at > INDEX_TTL) {
+      try {
+        const r = await fetch('https://api.fontsource.org/v1/fonts')
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        fonts = filterFontsourceIndex(await r.json())
+        set(INDEX_KEY, { at: Date.now(), fonts }).catch(console.error)
+      } catch (e) {
+        if (!fonts) throw e // offline: a stale cache still beats nothing
+      }
+    }
+    for (const f of fonts!) labels.set(`fs:${f.id}`, f.family)
+    return fonts!
+  })().catch((e) => {
+    fsIndex = null
+    throw e
+  })
+  return fsIndex
+}
 
 const pending = new Map<string, Promise<Font>>()
 const loaded = new Map<string, Font>()
@@ -20,12 +196,9 @@ export const onFontLoad = (fn: (error?: string) => void) => (notify = fn)
 export function loadFont(id: string): Promise<Font> {
   let p = pending.get(id)
   if (!p) {
-    const file = (FONTS.find((f) => f.id === id) ?? FONTS[0]).file
-    p = fetch(`${import.meta.env.BASE_URL}fonts/${file}`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`Failed to load font ${file}`)
-        return r.arrayBuffer()
-      })
+    const source = fontSource(id)
+    p = source
+      .load()
       .then(async (buf) => {
         const font = (await import('opentype.js')).parse(buf)
         loaded.set(id, font)
@@ -36,7 +209,7 @@ export function loadFont(id: string): Promise<Font> {
       .catch((e) => {
         pending.delete(id)
         failed.add(id)
-        notify(`Could not load font ${file}`)
+        notify(`Could not load font ${source.label}`)
         throw e
       })
     pending.set(id, p)
@@ -63,8 +236,15 @@ export function glyphPolylines(font: Font, text: string, size: number, style: Te
     for (const ch of line) {
       const glyph = font.charToGlyph(ch)
       if (prev) x += font.getKerningValue(prev, glyph) * scale + letterSpacing
-      // Glyph contours are always closed, but opentype.js doesn't always emit Z.
-      const cmds = (glyph.getPath(x, 0, size).commands as PathCommand[]).flatMap((c): PathCommand[] => (c.type === 'M' ? [{ type: 'Z' }, c] : [c]))
+      // Glyph contours are always closed, but opentype.js doesn't always emit Z. A corrupt glyph is left out
+      // (missingGlyphs reports it) so layout, the canvas and CAM never throw.
+      let path: PathCommand[] = []
+      try {
+        path = glyph.getPath(x, 0, size).commands as PathCommand[]
+      } catch {
+        /* skipped */
+      }
+      const cmds = path.flatMap((c): PathCommand[] => (c.type === 'M' ? [{ type: 'Z' }, c] : [c]))
       const advance = (glyph.advanceWidth ?? 0) * scale
       glyphs.push({
         polys: commandsToPolylines([...cmds, { type: 'Z' }]).map(({ points }) => ({ closed: true, points: points.map(([px, py]): Point => [px, -py]) })),
@@ -114,6 +294,34 @@ export function glyphPolylines(font: Font, text: string, size: number, style: Te
 
 // Flattened at the real size (mm) so the tolerance holds. Returns null (and starts loading) until the font is ready;
 // a font that failed to load is only retried by an explicit loadFont().
+// Characters (not whitespace) the loaded font has no usable glyph for; empty while the font isn't loaded.
+export function missingGlyphs(id: string, text: string): string[] {
+  const font = loaded.get(id)
+  if (!font) return []
+  const bad = (ch: string) => {
+    const g = font.charToGlyph(ch)
+    if (!g || g.index === 0) return true
+    try {
+      g.getPath(0, 0, 72)
+      return false
+    } catch {
+      return true
+    }
+  }
+  return [...new Set(text)].filter((ch) => ch.trim() && bad(ch))
+}
+
+export const fontFailed = (id: string) => failed.has(id)
+
+// After an uploaded font is removed, nothing may keep drawing it from memory.
+export function forgetFont(id: string) {
+  loaded.delete(id)
+  pending.delete(id)
+  failed.delete(id)
+  const prefix = JSON.stringify([id]).slice(0, -1) + ','
+  for (const key of [...glyphCache.keys()]) if (key.startsWith(prefix)) glyphCache.delete(key)
+}
+
 export function textGlyphs(t: Pick<TextShape, 'font' | 'size' | 'text'> & TextStyle): Polyline[] | null {
   const font = loaded.get(t.font)
   if (!font) {
