@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
-import type { Shape } from '../model'
-import { scaleShape, shapeBounds, shapeToPolylines } from './geometry'
+import type { Point, Shape } from '../model'
+import { scaleShape, shapeBounds, shapeToPolylines, tabPositions } from './geometry'
 
 const base = { id: 'a', name: 'a', x: 50, y: 20, rotation: 0 }
 
@@ -39,4 +39,19 @@ test('path bounds and scaling', () => {
   const shape: Shape = { ...base, type: 'path', points: [[-5, 0], [5, 10], [0, -10]], closed: true }
   close(shapeBounds(shape), { minX: 45, minY: 10, maxX: 55, maxY: 30 })
   close(shapeBounds(scaleShape(shape, 2, 0.5)), { minX: 40, minY: 15, maxX: 60, maxY: 25 })
+})
+
+test('tab positions are evenly spaced along the outline', () => {
+  const polys = shapeToPolylines({ ...base, x: 0, y: 0, type: 'rect', w: 100, h: 50 })
+  const tabs = tabPositions(polys, 4)
+  expect(tabs).toHaveLength(4)
+  // Arc length from the rect's first corner (-50, -25), going counter-clockwise.
+  const on = (a: number, b: number) => Math.abs(a - b) < 1e-9
+  const arc = ([x, y]: Point) =>
+    on(y, -25) ? x + 50 : on(x, 50) ? 125 + y : on(y, 25) ? 200 - x : on(x, -50) ? 275 - y : NaN
+  tabs.forEach(({ point, tangent }, i) => {
+    expect(arc(point)).toBeCloseTo(37.5 + 75 * i)
+    expect(Math.hypot(...tangent)).toBeCloseTo(1)
+  })
+  expect(tabPositions([{ closed: false, points: [[0, 0], [10, 0]] }], 2).map((t) => t.point[0])).toEqual([2.5, 7.5])
 })

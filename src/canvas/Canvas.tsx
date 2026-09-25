@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { icons } from '../icons'
 import { FONTS, loadFont } from '../lib/fonts'
-import { dominantScale, fitText, localBounds, polylineBounds, scaleShape, shapeBounds, shapeToPolylines, toLocal, toWorld, type Bounds } from '../lib/geometry'
+import { dominantScale, fitText, localBounds, polylineBounds, scaleShape, shapeBounds, shapeToPolylines, tabPositions, toLocal, toWorld, type Bounds } from '../lib/geometry'
 import { formatLength } from '../lib/units'
 import { newId, type Point, type Polyline, type Shape } from '../model'
 import { useAppStore, type Align } from '../store'
@@ -123,7 +123,7 @@ export default function Canvas() {
   if (tool !== 'pen' && pen.length) setPen([])
 
   const { zoom, panX, panY } = view
-  const { material, units } = project
+  const { stock, units } = project
   const selected = project.shapes.filter((s) => selection.includes(s.id))
   const frame = tool === 'select' && drag?.kind !== 'marquee' ? selectionFrame(selected) : null
   const toScreen = ([x, y]: Point): Point => [panX + x * zoom, panY - y * zoom]
@@ -150,7 +150,7 @@ export default function Canvas() {
     st.setTool('select')
   }
 
-  useEffect(() => fitTo(svgRef.current), [material.w, material.h])
+  useEffect(() => fitTo(svgRef.current), [stock.w, stock.h])
 
   useEffect(() => {
     const svg = svgRef.current!
@@ -305,8 +305,8 @@ export default function Canvas() {
 
   const minor: string[] = []
   const major: string[] = []
-  for (let x = 10; x < material.w; x += 10) (x % 50 ? minor : major).push(`M${x} 0V${material.h}`)
-  for (let y = 10; y < material.h; y += 10) (y % 50 ? minor : major).push(`M0 ${y}H${material.w}`)
+  for (let x = 10; x < stock.w; x += 10) (x % 50 ? minor : major).push(`M${x} 0V${stock.h}`)
+  for (let y = 10; y < stock.h; y += 10) (y % 50 ? minor : major).push(`M0 ${y}H${stock.w}`)
 
   const preview =
     drag?.kind === 'create' && tool !== 'select' && tool !== 'pen' && tool !== 'text' ? makeShape(tool, drag.start, drag.current, drag.shift, 3 / zoom) : null
@@ -359,17 +359,34 @@ export default function Canvas() {
         onAuxClick={(e) => e.preventDefault()}
       >
         <g transform={`translate(${panX} ${panY}) scale(${zoom} ${-zoom})`}>
-          <rect className="material" width={material.w} height={material.h} />
+          <rect className="material" width={stock.w} height={stock.h} />
           {zoom * 10 >= 6 && <path className="grid-minor" d={minor.join('')} />}
           <path className="grid-major" d={major.join('')} />
-          <rect className="material-edge" width={material.w} height={material.h} />
+          <rect className="material-edge" width={stock.w} height={stock.h} />
           {project.shapes.map((s) => {
             const polys = shapeToPolylines(s)
             const cls = selection.includes(s.id) ? 'selected' : hover === s.id ? 'hover' : ''
+            const { cut } = s
+            // Tabs are shown per contour so every separate piece is visibly held.
+            const tabs = cut?.tabs ? polys.flatMap((p) => tabPositions([p], cut.tabCount)) : []
+            const w = (cut?.tabWidth ?? 0) / 2
             return (
-              <g key={s.id} data-id={s.id} className={`shape ${cls}`}>
+              <g key={s.id} data-id={s.id} data-cut={cut?.type ?? 'none'} data-side={cut?.type === 'outline' ? cut.side : undefined} className={`shape ${cls}`}>
                 <path className="hit" d={pathD(polys)} />
-                <path d={pathD(polys)} style={{ fill: polys.every((p) => p.closed) ? undefined : 'none', fillRule: s.fillRule }} />
+                <path
+                  d={pathD(polys)}
+                  style={{
+                    fill: polys.every((p) => p.closed) ? undefined : 'none',
+                    fillOpacity: cut?.type === 'pocket' ? 0.1 + 0.7 * Math.min(1, cut.depth / stock.thickness) : undefined,
+                    fillRule: s.fillRule,
+                  }}
+                />
+                {tabs.length > 0 && (
+                  <path
+                    className="tab"
+                    d={tabs.map(({ point: [x, y], tangent: [tx, ty] }) => `M${x - tx * w} ${y - ty * w}L${x + tx * w} ${y + ty * w}`).join('')}
+                  />
+                )}
               </g>
             )
           })}

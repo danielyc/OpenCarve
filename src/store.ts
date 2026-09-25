@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import { onFontLoad } from './lib/fonts'
 import { polylineBounds, shapeBounds, shapeToPolylines } from './lib/geometry'
+import { findBit, findMaterial, recommendedSettings } from './lib/library'
 import type { Units } from './lib/units'
-import { newId, newProject, type Project, type Shape, type ShapePatch } from './model'
+import { defaultCut, newId, newProject, validCut, type Cut, type CutSettings, type Project, type Shape, type ShapePatch } from './model'
 
 export type Step = 'design' | 'simulate' | 'export'
 export type Tool = 'select' | 'rect' | 'ellipse' | 'polygon' | 'pen' | 'text'
@@ -38,7 +39,13 @@ interface AppState {
   nudge: (dx: number, dy: number) => void
   undo: () => void
   redo: () => void
-  setMaterial: (patch: Partial<Project['material']>) => void
+  setStock: (patch: Partial<Project['stock']>) => void
+  setMaterialId: (id: string) => void
+  setBits: (bits: Project['bits']) => void
+  setCutSettings: (patch: Partial<CutSettings>) => void
+  resetCutSettings: () => void
+  setMachine: (machine: Project['machine']) => void
+  setCut: (ids: string[], patch: Partial<Cut> | null) => void
   setUnits: (units: Units) => void
   setView: (patch: Partial<View>) => void
   fitView: (width: number, height: number) => void
@@ -50,6 +57,9 @@ interface AppState {
 const pushHistory = (past: Project[], project: Project) => [...past, project].slice(-MAX_HISTORY)
 
 const existing = (ids: string[], project: Project) => ids.filter((id) => project.shapes.some((s) => s.id === id))
+
+const recommended = (p: Project): Project =>
+  p.cutSettingsCustom ? p : { ...p, cutSettings: recommendedSettings(findMaterial(p.materialId), findBit(p.bits.rough)) }
 
 export const useAppStore = create<AppState>()((set, get) => {
   // During a transient gesture, edits replace the project without recording history; commit() records one entry.
@@ -80,7 +90,10 @@ export const useAppStore = create<AppState>()((set, get) => {
 
     addShape: (shape) => get().addShapes([shape]),
     addShapes: (shapes) => {
-      setProject((p) => ({ ...p, shapes: [...p.shapes, ...shapes] }))
+      setProject((p) => {
+        const t = p.stock.thickness
+        return { ...p, shapes: [...p.shapes, ...shapes.map((s) => (s.cut ? s : { ...s, cut: validCut(s, defaultCut(t), t) }))] }
+      })
       set({ selection: shapes.map((s) => s.id) })
     },
 
@@ -112,7 +125,7 @@ export const useAppStore = create<AppState>()((set, get) => {
     align: (mode) => {
       const shapes = selected()
       if (!shapes.length) return
-      const { w, h } = get().project.material
+      const { w, h } = get().project.stock
       const ref =
         shapes.length > 1
           ? polylineBounds(shapes.flatMap(shapeToPolylines))
@@ -164,12 +177,36 @@ export const useAppStore = create<AppState>()((set, get) => {
         }
       }),
 
-    setMaterial: (patch) => setProject((p) => ({ ...p, material: { ...p.material, ...patch } })),
+    // Through cuts stay through when the stock gets thicker; deeper cuts are clamped when it gets thinner.
+    setStock: (patch) =>
+      setProject((p) => {
+        const stock = { ...p.stock, ...patch }
+        const t = stock.thickness
+        const shapes = p.shapes.map((s) =>
+          s.cut ? { ...s, cut: validCut(s, { ...s.cut, depth: s.cut.depth >= p.stock.thickness ? t : s.cut.depth }, t) } : s,
+        )
+        return { ...p, stock, shapes }
+      }),
+    setMaterialId: (materialId) => setProject((p) => recommended({ ...p, materialId })),
+    setBits: (bits) => setProject((p) => recommended({ ...p, bits })),
+    setCutSettings: (patch) => setProject((p) => ({ ...p, cutSettings: { ...p.cutSettings, ...patch }, cutSettingsCustom: true })),
+    resetCutSettings: () => setProject((p) => recommended({ ...p, cutSettingsCustom: false })),
+    setMachine: (machine) => setProject((p) => ({ ...p, machine })),
+    setCut: (ids, patch) =>
+      setProject((p) => {
+        const t = p.stock.thickness
+        return {
+          ...p,
+          shapes: p.shapes.map((s) =>
+            !ids.includes(s.id) ? s : { ...s, cut: patch ? validCut(s, { ...(s.cut ?? defaultCut(t)), ...patch }, t) : undefined },
+          ),
+        }
+      }),
     setUnits: (units) => set((s) => ({ project: { ...s.project, units } })),
     setView: (patch) => set((s) => ({ view: { ...s.view, ...patch } })),
 
     fitView: (width, height) => {
-      const { w, h } = get().project.material
+      const { w, h } = get().project.stock
       const zoom = Math.max(0.05, Math.min((width - 2 * FIT_MARGIN) / w, (height - 2 * FIT_MARGIN) / h))
       set({ view: { zoom, panX: (width - w * zoom) / 2, panY: (height + h * zoom) / 2 } })
     },

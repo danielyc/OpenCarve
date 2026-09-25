@@ -61,3 +61,25 @@ test('imports an SVG file', async ({ page }) => {
   await expect(page.locator('[data-id]')).toHaveCount(3)
   await expect(page.getByRole('heading', { name: '3 shapes' })).toBeVisible()
 })
+
+test('sets a rectangle to a pocket cut', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Rectangle' }).click()
+  const box = (await page.getByLabel('Design canvas').boundingBox())!
+  await page.mouse.move(box.x + box.width / 2 - 50, box.y + box.height / 2 - 30)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 + 50, box.y + box.height / 2 + 30, { steps: 4 })
+  await page.mouse.up()
+
+  const shape = page.locator('[data-id]')
+  await expect(shape).toHaveAttribute('data-cut', 'outline')
+  await expect(page.getByRole('heading', { name: 'Cut' })).toBeVisible()
+  await page.getByRole('radio', { name: 'Pocket' }).click()
+  await expect(shape).toHaveAttribute('data-cut', 'pocket')
+  const depth = page.getByLabel('Depth', { exact: true })
+  await depth.fill('3')
+  await depth.press('Enter')
+  await expect(depth).toHaveValue('3.00')
+  await expect(page.getByLabel('Depth slider')).toHaveValue('3')
+  await expect(page.getByLabel('Tabs')).toHaveCount(0)
+})
