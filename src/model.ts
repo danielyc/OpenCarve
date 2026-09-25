@@ -10,7 +10,6 @@ export interface ShapeBase {
   x: number
   y: number
   rotation: number
-  locked?: boolean
 }
 
 export interface RectShape extends ShapeBase {

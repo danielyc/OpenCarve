@@ -67,3 +67,21 @@ test('duplicate offsets copies and selects them', () => {
   expect([b.x, b.y]).toEqual([15, 15])
   expect(store().selection).toEqual([b.id])
 })
+
+test('cancelling a gesture restores the project', () => {
+  store().addShape(rect('a', 10, 10))
+  store().beginTransient()
+  store().updateShapes(['a'], { x: 50 })
+  store().cancelTransient()
+  expect(store().project.shapes[0].x).toBe(10)
+  expect(store().past).toHaveLength(1)
+})
+
+test('no-op edits and unit changes are not undo entries', () => {
+  store().addShape(rect('a', 10, 10))
+  store().updateShapes(['a'], { x: 10 })
+  store().setUnits('in')
+  expect(store().past).toHaveLength(1)
+  store().undo()
+  expect(store().project.units).toBe('in')
+})

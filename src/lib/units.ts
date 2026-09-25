@@ -7,7 +7,8 @@ export const formatLength = (mm: number, units: Units) =>
   units === 'mm' ? mm.toFixed(2) : mmToIn(mm).toFixed(3)
 
 export function parseLength(text: string, units: Units): number | null {
-  const v = parseFloat(text)
-  if (!Number.isFinite(v)) return null
+  const t = text.trim()
+  const v = Number(t)
+  if (!t || !Number.isFinite(v)) return null
   return units === 'mm' ? v : inToMm(v)
 }

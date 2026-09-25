@@ -41,6 +41,7 @@ interface AppState {
   fitView: (width: number, height: number) => void
   beginTransient: () => void
   commit: () => void
+  cancelTransient: () => void
 }
 
 const pushHistory = (past: Project[], project: Project) => [...past, project].slice(-MAX_HISTORY)
@@ -53,6 +54,7 @@ export const useAppStore = create<AppState>()((set, get) => {
     set((s) => {
       const project = fn(s.project)
       if (s.transientBase) return { project }
+      if (JSON.stringify(project) === JSON.stringify(s.project)) return {}
       return { project, past: pushHistory(s.past, s.project), future: [] }
     })
 
@@ -128,10 +130,12 @@ export const useAppStore = create<AppState>()((set, get) => {
       if (selection.length) get().updateShapes(selection, (s) => ({ ...s, x: s.x + dx, y: s.y + dy }))
     },
 
+    // Units are a display preference: kept out of history and preserved across undo/redo.
     undo: () =>
       set((s) => {
-        const project = s.past.at(-1)
-        if (!project) return {}
+        const prev = s.past.at(-1)
+        if (!prev) return {}
+        const project = { ...prev, units: s.project.units }
         return {
           project,
           past: s.past.slice(0, -1),
@@ -143,8 +147,9 @@ export const useAppStore = create<AppState>()((set, get) => {
 
     redo: () =>
       set((s) => {
-        const [project, ...future] = s.future
-        if (!project) return {}
+        const [next, ...future] = s.future
+        if (!next) return {}
+        const project = { ...next, units: s.project.units }
         return {
           project,
           past: pushHistory(s.past, s.project),
@@ -155,7 +160,7 @@ export const useAppStore = create<AppState>()((set, get) => {
       }),
 
     setMaterial: (patch) => setProject((p) => ({ ...p, material: { ...p.material, ...patch } })),
-    setUnits: (units) => setProject((p) => ({ ...p, units })),
+    setUnits: (units) => set((s) => ({ project: { ...s.project, units } })),
     setView: (patch) => set((s) => ({ view: { ...s.view, ...patch } })),
 
     fitView: (width, height) => {
@@ -171,5 +176,7 @@ export const useAppStore = create<AppState>()((set, get) => {
         if (!base || base === s.project) return { transientBase: null }
         return { past: pushHistory(s.past, base), future: [], transientBase: null }
       }),
+    cancelTransient: () =>
+      set((s) => (s.transientBase ? { project: s.transientBase, transientBase: null } : {})),
   }
 })

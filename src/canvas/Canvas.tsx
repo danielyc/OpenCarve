@@ -50,8 +50,8 @@ function selectionFrame(shapes: Shape[]): Frame | null {
   return { x: 0, y: 0, rotation: 0, b: polylineBounds(shapes.flatMap(shapeToPolylines)) }
 }
 
-// ponytail: multi-selection scales in the shared axis-aligned frame, so rotated shapes inside it are
-// resized along their own axes (not skewed). Exact only for a single shape or unrotated shapes.
+// ponytail: a rotated shape inside a multi-selection gets the frame's scale projected onto its own axes
+// instead of a true skew; exact for a single shape, unrotated shapes, or uniform scaling.
 function scaleFn(base: Shape[], frame: Frame, [hx, hy]: Point) {
   const { b } = frame
   const w0 = b.maxX - b.minX
@@ -70,7 +70,10 @@ function scaleFn(base: Shape[], frame: Frame, [hx, hy]: Point) {
     return base.map((s) => {
       const [cx, cy] = toLocal(frame, [s.x, s.y])
       const [x, y] = toWorld(frame, [anchor[0] + (cx - anchor[0]) * sx, anchor[1] + (cy - anchor[1]) * sy])
-      return { ...scaleShape(s, sx, sy), x, y }
+      const r = ((s.rotation - frame.rotation) * Math.PI) / 180
+      const c = Math.cos(r)
+      const n = Math.sin(r)
+      return { ...scaleShape(s, Math.hypot(sx * c, sy * n), Math.hypot(sx * n, sy * c)), x, y }
     })
   }
 }
@@ -88,13 +91,17 @@ function rotateFn(base: Shape[], frame: Frame, start: Point) {
   }
 }
 
-function makeShape(tool: 'rect' | 'ellipse' | 'polygon', a: Point, b: Point, square: boolean, id = ''): Shape | null {
+function makeShape(tool: 'rect' | 'ellipse' | 'polygon', a: Point, b: Point, square: boolean, minSize: number, id = ''): Shape | null {
   let w = Math.abs(b[0] - a[0])
   let h = Math.abs(b[1] - a[1])
   if (square) w = h = Math.max(w, h)
-  if (w < 0.5 || h < 0.5) return null
-  const shape = { id, name: NAMES[tool], rotation: 0, w, h, x: a[0] + (Math.sign(b[0] - a[0]) * w) / 2, y: a[1] + (Math.sign(b[1] - a[1]) * h) / 2 }
+  if (w < minSize || h < minSize) return null
+  const shape = { id, name: NAMES[tool], rotation: 0, w, h, x: a[0] + ((b[0] >= a[0] ? 1 : -1) * w) / 2, y: a[1] + ((b[1] >= a[1] ? 1 : -1) * h) / 2 }
   return tool === 'polygon' ? { ...shape, type: 'polygon', sides: 6 } : { ...shape, type: tool }
+}
+
+const fitTo = (svg: SVGSVGElement | null) => {
+  if (svg?.clientWidth) useAppStore.getState().fitView(svg.clientWidth, svg.clientHeight)
 }
 
 const isTyping = (t: EventTarget | null) => t instanceof Element && !!t.closest('input, textarea, select, [contenteditable="true"]')
@@ -119,11 +126,6 @@ export default function Canvas() {
   const toScreen = ([x, y]: Point): Point => [panX + x * zoom, panY - y * zoom]
   const pts = (ps: Point[]) => ps.map((p) => toScreen(p).join(',')).join(' ')
 
-  const fit = () => {
-    const svg = svgRef.current
-    if (svg?.clientWidth) useAppStore.getState().fitView(svg.clientWidth, svg.clientHeight)
-  }
-
   const eventPoint = (e: { clientX: number; clientY: number }): Point => {
     const r = svgRef.current!.getBoundingClientRect()
     return [(e.clientX - r.left - panX) / zoom, (panY - (e.clientY - r.top)) / zoom]
@@ -145,14 +147,15 @@ export default function Canvas() {
     st.setTool('select')
   }
 
-  useEffect(fit, [])
+  useEffect(() => fitTo(svgRef.current), [material.w, material.h])
 
   useEffect(() => {
     const svg = svgRef.current!
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
       const { view, setView } = useAppStore.getState()
-      if (e.shiftKey) return setView({ panX: view.panX - e.deltaX, panY: view.panY - e.deltaY })
+      if (e.shiftKey) return setView({ panX: view.panX - (e.deltaX || e.deltaY) })
+      if (!e.ctrlKey && !e.metaKey) return setView({ panX: view.panX - e.deltaX, panY: view.panY - e.deltaY })
       const r = svg.getBoundingClientRect()
       const cx = e.clientX - r.left
       const cy = e.clientY - r.top
@@ -167,6 +170,13 @@ export default function Canvas() {
   const onKeyDown = useEffectEvent((e: KeyboardEvent) => {
     if (isTyping(e.target)) return
     const st = useAppStore.getState()
+    if (drag) {
+      if (e.key !== 'Escape') return
+      if (drag.kind === 'transform') st.cancelTransient()
+      setDrag(null)
+      e.preventDefault()
+      return
+    }
     const mod = e.metaKey || e.ctrlKey
     const key = e.key.toLowerCase()
     const step = e.shiftKey ? 10 : 1
@@ -182,7 +192,6 @@ export default function Canvas() {
     else if (key === 'enter' && pen.length) finishPen(pen)
     else if (key === 'escape') {
       if (pen.length) setPen([])
-      else if (drag?.kind === 'create') setDrag(null)
       else st.setSelection([])
     } else return
     e.preventDefault()
@@ -274,7 +283,7 @@ export default function Canvas() {
       st.setSelection([...new Set([...drag.keep, ...hits])])
     }
     if (drag.kind === 'create' && tool !== 'select' && tool !== 'pen') {
-      const shape = makeShape(tool, drag.start, p, e.shiftKey, newId())
+      const shape = makeShape(tool, drag.start, p, e.shiftKey, 3 / zoom, newId())
       if (shape) {
         st.addShape(shape)
         st.setTool('select')
@@ -289,7 +298,7 @@ export default function Canvas() {
   for (let y = 10; y < material.h; y += 10) (y % 50 ? minor : major).push(`M0 ${y}H${material.w}`)
 
   const preview =
-    drag?.kind === 'create' && tool !== 'select' && tool !== 'pen' ? makeShape(tool, drag.start, drag.current, drag.shift) : null
+    drag?.kind === 'create' && tool !== 'select' && tool !== 'pen' ? makeShape(tool, drag.start, drag.current, drag.shift, 3 / zoom) : null
   const penPreview = pen.length && cursor ? [...pen, cursor] : pen
   const origin = toScreen([0, 0])
 
@@ -323,7 +332,7 @@ export default function Canvas() {
           </button>
         ))}
         <span className="toolbar-gap" />
-        <button onClick={fit}>Fit view</button>
+        <button onClick={() => fitTo(svgRef.current)}>Fit view</button>
         <output className="zoom" aria-label="Zoom">{Math.round((zoom / PX_PER_MM_AT_100) * 100)}%</output>
       </div>
       <svg

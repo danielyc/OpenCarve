@@ -32,3 +32,15 @@ test('draws a rectangle and undoes it', async ({ page }) => {
   await page.keyboard.press('ControlOrMeta+z')
   await expect(shapes).toHaveCount(0)
 })
+
+test('draws a path with the pen tool', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Pen' }).click()
+  const box = (await page.getByLabel('Design canvas').boundingBox())!
+  const cx = box.x + box.width / 2
+  const cy = box.y + box.height / 2
+  for (const [dx, dy] of [[-50, 0], [50, 0], [0, 60]]) await page.mouse.click(cx + dx, cy + dy)
+  await page.keyboard.press('Enter')
+  await expect(page.locator('[data-id]')).toHaveCount(1)
+  await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Path')
+})

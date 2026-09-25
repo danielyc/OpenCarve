@@ -12,4 +12,6 @@ test('parses lengths', () => {
   expect(parseLength('12.5', 'mm')).toBe(12.5)
   expect(parseLength('2', 'in')).toBe(50.8)
   expect(parseLength('abc', 'mm')).toBeNull()
+  expect(parseLength(' ', 'mm')).toBeNull()
+  expect(parseLength('12abc', 'mm')).toBeNull()
 })
