@@ -74,7 +74,7 @@ The font picker (Inspector → Font) searches three groups:
 
 ## Contributing
 
-Issues and pull requests are welcome. [PLAN.md](PLAN.md) describes the architecture decisions, the build steps and the known limitations. Please run lint and the tests before opening a pull request.
+Issues and pull requests are welcome. [AGENTS.md](AGENTS.md) describes the code layout, conventions and how to verify a change. Please run lint and the tests before opening a pull request.
 
 ## License
 
