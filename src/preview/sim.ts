@@ -15,7 +15,17 @@ export interface SimResult {
   width: number
   height: number
   cellSize: number
+  stock: Project['stock']
   heights: Float32Array
+  mesh?: SurfaceMesh // added by the sim worker
+}
+
+// Render-ready surface (three.js coordinates, see mesh.ts), built off the main thread.
+export interface SurfaceMesh {
+  positions: Float32Array
+  normals: Float32Array
+  colors: Float32Array
+  index: Uint32Array
 }
 
 const MAX_CELLS = 1.2e6
@@ -103,5 +113,5 @@ export function simulate({ id, stock, ops, bits, resolution }: SimInput): SimRes
 
   const floor = -stock.thickness
   for (let i = 0; i < heights.length; i++) if (heights[i] < floor) heights[i] = floor
-  return { id, width, height, cellSize: cell, heights }
+  return { id, width, height, cellSize: cell, stock, heights }
 }

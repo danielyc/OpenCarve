@@ -599,6 +599,37 @@ button:disabled {
   right: 8px;
 }
 
+.preview3d-busy:empty {
+  padding: 0;
+}
+
+.preview3d-reset {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 3px 8px;
+  font-size: 12px;
+  background: rgb(255 255 255 / 0.85);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.preview3d-error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 16px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.preview3d-host canvas:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .preview3d-legend {
   left: 8px;
   bottom: 8px;

@@ -25,12 +25,15 @@ export function useSim() {
   const cam = useAppStore((s) => s.cam)
   const stock = useAppStore((s) => s.project.stock)
   const bits = useAppStore((s) => s.project.bits)
+  const camBusy = useAppStore((s) => s.camBusy)
   useEffect(() => {
     useAppStore.setState({ simBusy: true })
+    // Wait for the toolpaths to catch up, so a bit change never simulates old paths with the new bit.
+    if (camBusy) return
     const t = setTimeout(
       () => run({ stock, ops: cam?.ops ?? [], bits: { rough: findBit(bits.rough), ...(bits.detail && { detail: findBit(bits.detail) }) } }),
       DEBOUNCE_MS,
     )
     return () => clearTimeout(t)
-  }, [cam, stock, bits])
+  }, [cam, camBusy, stock, bits])
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Op, Pt3 } from '../cam/toolpath'
 import { findBit } from '../lib/library'
+import { surfaceMesh } from './mesh'
 import { gridCellSize, simulate, type SimResult } from './sim'
 
 const stock = { w: 50, h: 50, thickness: 12 }
@@ -70,5 +71,24 @@ describe('simulate', () => {
   it('never cuts below the stock bottom', () => {
     const res = simulate({ id: 1, stock, ops: [op([[25, 25, -13]])], bits: { rough: findBit('1/8-endmill') } })
     expect(at(res, 25, 25)).toBe(-12)
+  })
+})
+
+describe('surfaceMesh', () => {
+  it('builds up-facing normals and leaves holes where cut through', () => {
+    const bits = { rough: findBit('1/4-endmill') }
+    const res = simulate({ id: 1, stock, ops: [op([[25, 25, -20]])], bits, resolution: 0.5 })
+    const mesh = surfaceMesh(res)
+    const n = (x: number, y: number) => {
+      const k = (Math.round(y / 0.5) * res.width + Math.round(x / 0.5)) * 3
+      return Array.from(mesh.normals.slice(k, k + 3))
+    }
+    expect(n(5, 5).map(Math.abs)).toEqual([0, 1, 0])
+    const [nx, ny] = n(21.5, 25) // left rim of the hole: the wall faces +x (into the hole) and up
+    expect(nx).toBeGreaterThan(0.5)
+    expect(ny).toBeGreaterThan(0)
+    const full = (res.width - 1) * (res.height - 1) * 6
+    expect(mesh.index.length).toBeLessThan(full)
+    expect(mesh.index.length).toBeGreaterThan(full * 0.9)
   })
 })
