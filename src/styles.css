@@ -1098,3 +1098,91 @@ input.project-name {
 .bend input[type='range'] {
   margin: 0 0 6px;
 }
+
+.font-trigger {
+  padding: 5px 7px;
+  font-size: 13px;
+  text-align: left;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.font-panel {
+  display: grid;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.font-panel input[type='search'] {
+  font-variant-numeric: normal;
+}
+
+.font-chips,
+.font-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.font-chips button,
+.font-actions button {
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.font-chips button[aria-pressed='true'],
+.font-actions button[aria-pressed='true'],
+.font-row button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.font-list {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.font-list h3 {
+  margin: 6px 0 2px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.font-row {
+  display: flex;
+}
+
+.font-row button {
+  flex: 1;
+  padding: 4px 6px;
+  font-size: 13px;
+  text-align: left;
+  color: var(--text);
+  border: 0;
+  border-radius: 4px;
+  background: none;
+}
+
+.font-row button:hover {
+  background: var(--bg);
+}
+
+.font-row small {
+  color: var(--muted);
+}
+
+.font-row .font-remove {
+  flex: none;
+  color: var(--muted);
+}

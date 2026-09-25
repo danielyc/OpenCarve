@@ -5,7 +5,7 @@ Free, open-source (AGPL-3.0) design and toolpath software for hobby CNC routers,
 ## Features
 
 - **Design**: rectangle, ellipse, polygon, pen (lines and closed paths) and text tools; move, scale, rotate, align, duplicate, nudge, undo/redo.
-- **Text** with 4 bundled fonts (Roboto, Lora, Bebas Neue, Pacifico).
+- **Text** with 16 bundled fonts, your own uploaded TTF/OTF fonts, and Google Fonts on demand (see [Fonts](#fonts)).
 - **SVG import**: paths, basic shapes, transforms and groups (use Import or drop a file onto the editor).
 - **Materials, bits and cut settings**: pick a material and bits; feed, plunge, stepdown and RPM are filled in with recommended values you can override.
 - **Cuts**: outline (outside, inside or on the path, with tabs), pocket and V-carve.
@@ -58,7 +58,11 @@ GitHub Actions runs lint, build and all tests on pushes to `main` and on pull re
 
 ## Fonts
 
-The bundled fonts in `public/fonts` are licensed under the SIL Open Font License 1.1; each font's licence is next to it (`*-OFL.txt`).
+The font picker (Inspector → Font) searches three groups:
+
+- **Bundled**: Roboto, Open Sans, Montserrat, Oswald (sans-serif); Lora, Playfair Display, Merriweather, Cinzel (serif); Pacifico, Dancing Script, Great Vibes, Caveat (handwriting); Bebas Neue, Alfa Slab One, Righteous, Allerta Stencil (display/stencil). They are unmodified Regular-weight TTFs from [google/fonts](https://github.com/google/fonts) (or, for families that only ship a variable font there, the static Regular from the [Fontsource](https://fontsource.org) CDN), licensed under the SIL Open Font License 1.1; each font's licence is next to it in `public/fonts` (`*-OFL.txt`).
+- **Your fonts**: upload a `.ttf` or `.otf` (up to 5 MB). It is stored in this browser (IndexedDB) and embedded in `.opencarve` files you save, so a project opens with its fonts elsewhere. Make sure the font's licence allows embedding.
+- **Google Fonts**: "Browse Google Fonts" loads the [Fontsource](https://fontsource.org) index (fonts with a Latin subset, a Regular weight and an OFL, Apache 2.0 or Ubuntu Font licence; the licence is shown per font). A chosen font is downloaded from the jsDelivr CDN and cached in IndexedDB, so it works offline after first use. Projects store only its id, so opening one on another machine needs a connection once.
 
 ## Contributing
 

@@ -3,7 +3,7 @@ import { parse } from 'opentype.js'
 import { expect, test } from 'vitest'
 import type { Point, Polyline, TextShape } from '../model'
 import { cubicSegments, flattenCubic, flattenQuad } from './bezier'
-import { glyphPolylines } from './fonts'
+import { filterFontsourceIndex, fontSource, FONTS, glyphPolylines } from './fonts'
 import { polylineBounds, scaleShape } from './geometry'
 
 const buf = readFileSync(new URL('../../public/fonts/Roboto-Regular.ttf', import.meta.url))
@@ -116,4 +116,41 @@ test('mirror flips x about the block centre and keeps each contour winding', () 
     const [x, y] = plain[i].points[0]
     expect(p.points.some(([px, py]) => Math.abs(px - (mid - x)) < 1e-9 && py === y)).toBe(true)
   })
+})
+
+const parseFile = (file: string) => {
+  const b = readFileSync(new URL(`../../public/fonts/${file}`, import.meta.url))
+  return parse(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength))
+}
+
+test('every bundled font parses, and I / O have 1 / 2 contours in two of the new ones', () => {
+  for (const f of FONTS) expect(parseFile(f.file).unitsPerEm, f.file).toBeGreaterThan(0)
+  for (const id of ['oswald', 'alfa-slab-one']) {
+    const f = parseFile(FONTS.find((x) => x.id === id)!.file)
+    expect(glyphPolylines(f, 'I', 20)).toHaveLength(1)
+    expect(glyphPolylines(f, 'O', 20)).toHaveLength(2)
+  }
+})
+
+test('font ids map to their source kind', () => {
+  expect(fontSource('lora')).toMatchObject({ kind: 'bundled', label: 'Lora' })
+  expect(fontSource('comic')).toMatchObject({ kind: 'bundled', label: 'Roboto' })
+  expect(fontSource('upload:1234')).toMatchObject({ kind: 'upload' })
+  expect(fontSource('fs:playfair-display')).toMatchObject({ kind: 'fontsource', label: 'Playfair Display' })
+})
+
+test('the Fontsource index keeps latin, regular-weight fonts with a permissive licence', () => {
+  const entry = { subsets: ['latin', 'latin-ext'], weights: [400, 700], styles: ['normal'], defSubset: 'latin', variable: false, category: 'serif', license: 'OFL-1.1' }
+  const index = [
+    { ...entry, id: 'lora', family: 'Lora' },
+    { ...entry, id: 'noto-sans-jp', family: 'Noto Sans JP', subsets: ['japanese'] },
+    { ...entry, id: 'thin', family: 'Thin', weights: [100, 200] },
+    { ...entry, id: 'mit-font', family: 'MIT Font', license: 'mit' },
+    { ...entry, id: 'roboto', family: 'Roboto', category: 'sans-serif', license: 'Apache-2.0' },
+  ]
+  expect(filterFontsourceIndex(index)).toEqual([
+    { id: 'lora', family: 'Lora', category: 'serif', license: 'OFL-1.1' },
+    { id: 'roboto', family: 'Roboto', category: 'sans-serif', license: 'Apache-2.0' },
+  ])
+  expect(filterFontsourceIndex({ error: 'nope' })).toEqual([])
 })

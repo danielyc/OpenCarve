@@ -1,7 +1,8 @@
 import { del, get, set, update } from 'idb-keyval'
 import { newId, newProject, type Project } from '../model'
 import { useAppStore } from '../store'
-import { parseProject, serializeProject } from './projectFile'
+import { getUploadedFont, storeUploadedFont } from './fonts'
+import { parseProjectFile, serializeProject, uploadedFontIds, type EmbeddedFonts } from './projectFile'
 
 // IndexedDB layout: an index of entries, one record per project (the same versioned JSON as a .opencarve file,
 // so records can later be synced verbatim), and the id of the project to reopen on load.
@@ -24,8 +25,10 @@ export const listProjects = async () => ((await get<ProjectEntry[]>(INDEX)) ?? [
 
 export async function readProject(id: string): Promise<Project | null> {
   const text = await get<string>(key(id))
-  return text ? parseProject(text) : null
+  return text ? (await parseProjectFile(text, [], hasFont)).project : null
 }
+
+const hasFont = async (id: string) => !!(await getUploadedFont(id))
 
 export async function saveProject(p: Project) {
   await set(key(p.id), serializeProject(p))
@@ -140,7 +143,9 @@ export async function openFile(file: File | undefined) {
   if (!file) return
   try {
     const warnings: string[] = []
-    const p = { ...parseProject(await file.text(), warnings), id: newId() }
+    const { project, fonts } = await parseProjectFile(await file.text(), warnings, hasFont)
+    for (const [id, f] of Object.entries(fonts)) if (!(await hasFont(id))) await storeUploadedFont({ id, ...f })
+    const p = { ...project, id: newId() }
     useAppStore.getState().loadProject(p)
     await saveProject(p)
     // Same pattern as SVG import: the canvas status line is cleared by font loads, so notes go in a dialog.
@@ -150,8 +155,13 @@ export async function openFile(file: File | undefined) {
   }
 }
 
-export function downloadProject(p: Project) {
-  const url = URL.createObjectURL(new Blob([serializeProject(p)], { type: 'application/json' }))
+export async function downloadProject(p: Project) {
+  const fonts: EmbeddedFonts = {}
+  for (const id of uploadedFontIds(p)) {
+    const f = await getUploadedFont(id).catch(() => undefined)
+    if (f) fonts[id] = { name: f.name, data: f.data }
+  }
+  const url = URL.createObjectURL(new Blob([serializeProject(p, fonts)], { type: 'application/json' }))
   const a = document.createElement('a')
   a.href = url
   a.download = `${p.name || 'Untitled'}.opencarve`.replace(/[\\/:*?"<>|]/g, '_')
