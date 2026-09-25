@@ -1,4 +1,7 @@
-import { useAppStore, type Step } from './store'
+import Canvas from './canvas/Canvas'
+import { icons } from './icons'
+import Inspector from './Inspector'
+import { useAppStore, type Step, type Tool } from './store'
 
 const STEPS: { id: Step; label: string }[] = [
   { id: 'design', label: 'Design' },
@@ -6,11 +9,19 @@ const STEPS: { id: Step; label: string }[] = [
   { id: 'export', label: 'Export' },
 ]
 
-const TOOLS = ['Select', 'Rectangle', 'Ellipse', 'Polygon', 'Pen', 'Text']
+const TOOLS: { id: Tool; label: string }[] = [
+  { id: 'select', label: 'Select' },
+  { id: 'rect', label: 'Rectangle' },
+  { id: 'ellipse', label: 'Ellipse' },
+  { id: 'polygon', label: 'Polygon' },
+  { id: 'pen', label: 'Pen' },
+]
 
 export default function App() {
   const step = useAppStore((s) => s.step)
   const setStep = useAppStore((s) => s.setStep)
+  const tool = useAppStore((s) => s.tool)
+  const setTool = useAppStore((s) => s.setTool)
 
   return (
     <div className="app">
@@ -27,17 +38,22 @@ export default function App() {
       </header>
       <aside className="tools" aria-label="Tools">
         {TOOLS.map((t) => (
-          <button key={t}>
-            {t}
+          <button key={t.id} aria-pressed={tool === t.id} onClick={() => setTool(t.id)}>
+            {icons[t.id]}
+            {t.label}
           </button>
         ))}
+        <button disabled>
+          {icons.text}
+          Text
+        </button>
       </aside>
       <main className="workspace">
-        <section className="canvas2d">2D canvas</section>
+        <Canvas />
         <section className="preview3d">3D preview</section>
       </main>
       <aside className="panel">
-        <h2>Cut settings</h2>
+        <Inspector />
       </aside>
     </div>
   )

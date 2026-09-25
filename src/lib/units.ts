@@ -5,3 +5,9 @@ export const inToMm = (inches: number) => inches * 25.4
 
 export const formatLength = (mm: number, units: Units) =>
   units === 'mm' ? mm.toFixed(2) : mmToIn(mm).toFixed(3)
+
+export function parseLength(text: string, units: Units): number | null {
+  const v = parseFloat(text)
+  if (!Number.isFinite(v)) return null
+  return units === 'mm' ? v : inToMm(v)
+}
