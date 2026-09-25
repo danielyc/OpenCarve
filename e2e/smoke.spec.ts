@@ -44,3 +44,20 @@ test('draws a path with the pen tool', async ({ page }) => {
   await expect(page.locator('[data-id]')).toHaveCount(1)
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Path')
 })
+
+test('places a text shape with the text tool', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Text' }).click()
+  const box = (await page.getByLabel('Design canvas').boundingBox())!
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+  await expect(page.locator('[data-id]')).toHaveCount(1)
+  await expect(page.getByLabel('Text', { exact: true })).toHaveValue('Text')
+  await expect(page.getByRole('button', { name: 'Select' })).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('imports an SVG file', async ({ page }) => {
+  await page.goto('/')
+  await page.locator('input[type=file]').setInputFiles('e2e/fixtures/shapes.svg')
+  await expect(page.locator('[data-id]')).toHaveCount(3)
+  await expect(page.getByRole('heading', { name: '3 shapes' })).toBeVisible()
+})

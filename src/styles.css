@@ -185,7 +185,8 @@ button:disabled {
 .canvas-svg.tool-rect,
 .canvas-svg.tool-ellipse,
 .canvas-svg.tool-polygon,
-.canvas-svg.tool-pen {
+.canvas-svg.tool-pen,
+.canvas-svg.tool-text {
   cursor: crosshair;
 }
 
@@ -220,6 +221,7 @@ button:disabled {
 
 .shape path {
   fill: var(--shape-fill);
+  fill-rule: evenodd;
   stroke: var(--text);
   stroke-width: 1.5;
 }
@@ -342,7 +344,8 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
-.field input {
+.field input,
+.field select {
   width: 100%;
   padding: 5px 7px;
   font: inherit;
@@ -354,7 +357,8 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
-.field input:focus-visible {
+.field input:focus-visible,
+.field select:focus-visible {
   outline-offset: 0;
   border-color: var(--accent);
 }

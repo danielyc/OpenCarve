@@ -37,9 +37,28 @@ export interface PathShape extends ShapeBase {
   closed: boolean
 }
 
-export type Shape = RectShape | EllipseShape | PolygonShape | PathShape
+// w/h mirror the glyph bounds (kept in sync by fitText) so bounds work before the font has loaded.
+// Text only scales uniformly: resizing changes `size` by the dominant scale factor.
+export interface TextShape extends ShapeBase {
+  type: 'text'
+  text: string
+  font: string
+  size: number
+  w: number
+  h: number
+}
 
-export type ShapePatch = Partial<Omit<RectShape, 'type'> & Omit<PolygonShape, 'type'> & Omit<PathShape, 'type'>>
+// Multi-subpath import (e.g. an SVG path with holes); points are relative to x, y.
+export interface CompoundShape extends ShapeBase {
+  type: 'compound'
+  paths: Polyline[]
+}
+
+export type Shape = RectShape | EllipseShape | PolygonShape | PathShape | TextShape | CompoundShape
+
+export type ShapePatch = Partial<
+  Omit<RectShape, 'type'> & Omit<PolygonShape, 'type'> & Omit<PathShape, 'type'> & Omit<TextShape, 'type'>
+>
 
 export interface Project {
   id: string

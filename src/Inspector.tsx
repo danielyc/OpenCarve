@@ -1,21 +1,30 @@
 import { useState } from 'react'
-import { localBounds, scaleShape } from './lib/geometry'
+import { FONTS, loadFont } from './lib/fonts'
+import { fitText, localBounds, scaleShape } from './lib/geometry'
 import { formatLength, parseLength, type Units } from './lib/units'
 import type { Shape } from './model'
 import { useAppStore } from './store'
 
-function Field({ label, value, onCommit, wide }: { label: string; value: string; onCommit: (text: string) => void; wide?: boolean }) {
+// `live` commits on every keystroke; the whole focus session is a single undo entry.
+function Field({ label, value, onCommit, wide, live }: { label: string; value: string; onCommit: (text: string) => void; wide?: boolean; live?: boolean }) {
   const [draft, setDraft] = useState<string | null>(null)
   return (
     <label className={wide ? 'field wide' : 'field'}>
       <span>{label}</span>
       <input
         value={draft ?? value}
-        onFocus={() => setDraft(value)}
-        onChange={(e) => setDraft(e.target.value)}
+        onFocus={() => {
+          setDraft(value)
+          if (live) useAppStore.getState().beginTransient()
+        }}
+        onChange={(e) => {
+          setDraft(e.target.value)
+          if (live) onCommit(e.target.value)
+        }}
         onBlur={() => {
           if (draft !== null && draft !== value) onCommit(draft)
           setDraft(null)
+          if (live) useAppStore.getState().commit()
         }}
         onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
       />
@@ -84,6 +93,9 @@ export default function Inspector() {
     />
   )
   const polygons = selected.every((s) => s.type === 'polygon')
+  const texts = selected.every((s) => s.type === 'text')
+  const updateText = (patch: { text?: string; font?: string; size?: number }) =>
+    update((s) => (s.type === 'text' ? fitText({ ...s, ...patch }) : s))
 
   return (
     <>
@@ -111,6 +123,30 @@ export default function Inspector() {
               if (Number.isFinite(v)) update({ sides: Math.min(64, Math.max(3, v)) })
             }}
           />
+        )}
+        {texts && (
+          <>
+            <Field wide live label="Text" value={shared((s) => (s.type === 'text' ? s.text : ''))} onCommit={(text) => updateText({ text })} />
+            <label className="field">
+              <span>Font</span>
+              <select
+                value={shared((s) => (s.type === 'text' ? s.font : ''))}
+                onChange={(e) => {
+                  const font = e.target.value
+                  loadFont(font)
+                    .then(() => updateText({ font }))
+                    .catch(console.error)
+                }}
+              >
+                {FONTS.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {lengthField('Size', (s) => (s.type === 'text' ? s.size : 0), (s, size) => (s.type === 'text' ? fitText({ ...s, size }) : s), true)}
+          </>
         )}
       </div>
       <h2>Cut settings</h2>

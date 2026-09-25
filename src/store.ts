@@ -1,10 +1,11 @@
 import { create } from 'zustand'
+import { onFontLoad } from './lib/fonts'
 import { polylineBounds, shapeBounds, shapeToPolylines } from './lib/geometry'
 import type { Units } from './lib/units'
 import { newId, newProject, type Project, type Shape, type ShapePatch } from './model'
 
 export type Step = 'design' | 'simulate' | 'export'
-export type Tool = 'select' | 'rect' | 'ellipse' | 'polygon' | 'pen'
+export type Tool = 'select' | 'rect' | 'ellipse' | 'polygon' | 'pen' | 'text'
 export type Align = 'left' | 'centerX' | 'right' | 'top' | 'centerY' | 'bottom'
 export interface View {
   zoom: number
@@ -24,8 +25,10 @@ interface AppState {
   past: Project[]
   future: Project[]
   transientBase: Project | null
+  fontsVersion: number
   setStep: (step: Step) => void
   addShape: (shape: Shape) => void
+  addShapes: (shapes: Shape[]) => void
   updateShapes: (ids: string[], patch: ShapePatch | ((s: Shape) => Shape)) => void
   deleteSelected: () => void
   duplicateSelected: () => void
@@ -72,11 +75,13 @@ export const useAppStore = create<AppState>()((set, get) => {
     past: [],
     future: [],
     transientBase: null,
+    fontsVersion: 0,
     setStep: (step) => set({ step }),
 
-    addShape: (shape) => {
-      setProject((p) => ({ ...p, shapes: [...p.shapes, shape] }))
-      set({ selection: [shape.id] })
+    addShape: (shape) => get().addShapes([shape]),
+    addShapes: (shapes) => {
+      setProject((p) => ({ ...p, shapes: [...p.shapes, ...shapes] }))
+      set({ selection: shapes.map((s) => s.id) })
     },
 
     updateShapes: (ids, patch) =>
@@ -180,3 +185,5 @@ export const useAppStore = create<AppState>()((set, get) => {
       set((s) => (s.transientBase ? { project: s.transientBase, transientBase: null } : {})),
   }
 })
+
+onFontLoad(() => useAppStore.setState((s) => ({ fontsVersion: s.fontsVersion + 1 })))

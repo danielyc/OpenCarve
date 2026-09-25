@@ -1,4 +1,5 @@
-import type { Point, Polyline, Shape, ShapeBase } from '../model'
+import type { Point, Polyline, Shape, ShapeBase, TextShape } from '../model'
+import { unitGlyphs } from './fonts'
 
 export type Bounds = { minX: number; minY: number; maxX: number; maxY: number }
 type Placement = Pick<ShapeBase, 'x' | 'y' | 'rotation'>
@@ -64,6 +65,15 @@ export function localPolylines(shape: Shape): Polyline[] {
     }
     case 'path':
       return [{ closed: shape.closed, points: shape.points }]
+    case 'compound':
+      return shape.paths
+    case 'text': {
+      const polys = unitGlyphs(shape.font, shape.text) ?? []
+      const b = polylineBounds(polys)
+      const cx = (b.minX + b.maxX) / 2
+      const cy = (b.minY + b.maxY) / 2
+      return polys.map(({ closed, points }) => ({ closed, points: points.map(([x, y]) => [(x - cx) * shape.size, (y - cy) * shape.size]) }))
+    }
   }
 }
 
@@ -72,9 +82,30 @@ export const shapeToPolylines = (shape: Shape): Polyline[] =>
 
 export const shapeBounds = (shape: Shape) => polylineBounds(shapeToPolylines(shape))
 
-export const localBounds = (shape: Shape) => polylineBounds(localPolylines(shape))
+export const localBounds = (shape: Shape): Bounds =>
+  shape.type === 'text'
+    ? { minX: -shape.w / 2, minY: -shape.h / 2, maxX: shape.w / 2, maxY: shape.h / 2 }
+    : polylineBounds(localPolylines(shape))
+
+// Call only once the font is loaded (see loadFont).
+export function fitText(shape: TextShape): TextShape {
+  const b = polylineBounds(localPolylines(shape))
+  return b.minX > b.maxX ? { ...shape, w: 0, h: 0 } : { ...shape, w: b.maxX - b.minX, h: b.maxY - b.minY }
+}
 
 export function scaleShape(shape: Shape, sx: number, sy: number): Shape {
-  if (shape.type === 'path') return { ...shape, points: shape.points.map(([x, y]) => [x * sx, y * sy]) }
-  return { ...shape, w: shape.w * Math.abs(sx), h: shape.h * Math.abs(sy) }
+  const scale = (points: Point[]) => points.map(([x, y]): Point => [x * sx, y * sy])
+  switch (shape.type) {
+    case 'path':
+      return { ...shape, points: scale(shape.points) }
+    case 'compound':
+      return { ...shape, paths: shape.paths.map((p) => ({ ...p, points: scale(p.points) })) }
+    case 'text': {
+      const [ax, ay] = [Math.abs(sx), Math.abs(sy)]
+      const f = Math.abs(Math.log(ax)) >= Math.abs(Math.log(ay)) ? ax : ay
+      return { ...shape, size: shape.size * f, w: shape.w * f, h: shape.h * f }
+    }
+    default:
+      return { ...shape, w: shape.w * Math.abs(sx), h: shape.h * Math.abs(sy) }
+  }
 }

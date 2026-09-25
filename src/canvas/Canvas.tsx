@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { icons } from '../icons'
-import { localBounds, polylineBounds, scaleShape, shapeBounds, shapeToPolylines, toLocal, toWorld, type Bounds } from '../lib/geometry'
+import { FONTS, loadFont } from '../lib/fonts'
+import { fitText, localBounds, polylineBounds, scaleShape, shapeBounds, shapeToPolylines, toLocal, toWorld, type Bounds } from '../lib/geometry'
 import { formatLength } from '../lib/units'
 import { newId, type Point, type Polyline, type Shape } from '../model'
 import { useAppStore, type Align } from '../store'
@@ -111,6 +112,7 @@ export default function Canvas() {
   const selection = useAppStore((s) => s.selection)
   const tool = useAppStore((s) => s.tool)
   const view = useAppStore((s) => s.view)
+  useAppStore((s) => s.fontsVersion)
   const svgRef = useRef<SVGSVGElement>(null)
   const [drag, setDrag] = useState<Drag | null>(null)
   const [hover, setHover] = useState<string | null>(null)
@@ -221,6 +223,16 @@ export default function Canvas() {
       return
     }
     if (e.button !== 0) return
+    if (tool === 'text') {
+      const font = FONTS[0].id
+      loadFont(font)
+        .then(() => {
+          st.addShape(fitText({ id: newId(), type: 'text', name: 'Text', text: 'Text', font, size: 20, w: 0, h: 0, x: p[0], y: p[1], rotation: 0 }))
+          st.setTool('select')
+        })
+        .catch(console.error)
+      return
+    }
     if (tool === 'pen') {
       if (pen.length >= 3 && dist(p, pen[0]) < CLOSE_PX / zoom) finishPen(pen, true)
       else setPen([...pen, p])
@@ -282,7 +294,7 @@ export default function Canvas() {
       const hits = project.shapes.filter((s) => overlaps(box, shapeBounds(s))).map((s) => s.id)
       st.setSelection([...new Set([...drag.keep, ...hits])])
     }
-    if (drag.kind === 'create' && tool !== 'select' && tool !== 'pen') {
+    if (drag.kind === 'create' && tool !== 'select' && tool !== 'pen' && tool !== 'text') {
       const shape = makeShape(tool, drag.start, p, e.shiftKey, 3 / zoom, newId())
       if (shape) {
         st.addShape(shape)
@@ -298,7 +310,7 @@ export default function Canvas() {
   for (let y = 10; y < material.h; y += 10) (y % 50 ? minor : major).push(`M0 ${y}H${material.w}`)
 
   const preview =
-    drag?.kind === 'create' && tool !== 'select' && tool !== 'pen' ? makeShape(tool, drag.start, drag.current, drag.shift, 3 / zoom) : null
+    drag?.kind === 'create' && tool !== 'select' && tool !== 'pen' && tool !== 'text' ? makeShape(tool, drag.start, drag.current, drag.shift, 3 / zoom) : null
   const penPreview = pen.length && cursor ? [...pen, cursor] : pen
   const origin = toScreen([0, 0])
 
@@ -358,7 +370,7 @@ export default function Canvas() {
             return (
               <g key={s.id} data-id={s.id} className={`shape ${cls}`}>
                 <path className="hit" d={pathD(polys)} />
-                <path d={pathD(polys)} fill={polys.every((p) => p.closed) ? undefined : 'none'} />
+                <path d={pathD(polys)} style={polys.every((p) => p.closed) ? undefined : { fill: 'none' }} />
               </g>
             )
           })}

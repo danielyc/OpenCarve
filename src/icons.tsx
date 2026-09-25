@@ -13,6 +13,7 @@ export const icons = {
   polygon: <Icon><path d="M8 2l5.2 3v6L8 14l-5.2-3V5z" /></Icon>,
   pen: <Icon><path d="M2.5 13.5l1-3.5 7.5-7.5 2.5 2.5-7.5 7.5zM9.5 4l2.5 2.5" /></Icon>,
   text: <Icon><path d="M3 3.5h10M8 3.5v10M6 13.5h4" /></Icon>,
+  import: <Icon><path d="M8 2v8M4.5 6.5L8 10l3.5-3.5M2.5 11v2.5h11V11" /></Icon>,
   left: <Icon><path d="M2 1.5v13" /><rect x="4" y="3" width="10" height="4" /><rect x="4" y="9" width="6" height="4" /></Icon>,
   centerX: <Icon><path d="M8 1.5v13" /><rect x="3" y="3" width="10" height="4" /><rect x="5" y="9" width="6" height="4" /></Icon>,
   right: <Icon><path d="M14 1.5v13" /><rect x="2" y="3" width="10" height="4" /><rect x="6" y="9" width="6" height="4" /></Icon>,
