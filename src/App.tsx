@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react'
+import { useCam } from './cam/useCam'
 import Canvas from './canvas/Canvas'
+import ExportPanel from './ExportPanel'
 import { icons } from './icons'
 import Inspector from './Inspector'
 import { importSvg } from './lib/svgImport'
@@ -39,6 +41,7 @@ export default function App() {
   const setTool = useAppStore((s) => s.setTool)
   const fileRef = useRef<HTMLInputElement>(null)
   const [dropping, setDropping] = useState(false)
+  useCam()
 
   return (
     <div
@@ -95,7 +98,7 @@ export default function App() {
         <section className="preview3d">3D preview</section>
       </main>
       <aside className="panel">
-        <Inspector />
+        {step === 'export' ? <ExportPanel /> : <Inspector />}
       </aside>
     </div>
   )

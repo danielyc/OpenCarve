@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { CamResult } from './cam/toolpath'
 import { onFontLoad } from './lib/fonts'
 import { polylineBounds, shapeBounds, shapeToPolylines } from './lib/geometry'
 import { findBit, findMaterial, recommendedSettings } from './lib/library'
@@ -28,6 +29,8 @@ interface AppState {
   transientBase: Project | null
   fontsVersion: number
   status: string | null
+  cam: CamResult | null
+  camBusy: boolean
   setStep: (step: Step) => void
   addShape: (shape: Shape) => void
   addShapes: (shapes: Shape[]) => void
@@ -97,6 +100,8 @@ export const useAppStore = create<AppState>()((set, get) => {
     transientBase: null,
     fontsVersion: 0,
     status: null,
+    cam: null,
+    camBusy: false,
     setStep: (step) => set({ step }),
 
     addShape: (shape) => get().addShapes([shape]),

@@ -1,4 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import type { Op, Pt3 } from '../cam/toolpath'
 import { icons } from '../icons'
 import { FONTS, loadFont } from '../lib/fonts'
 import { dominantScale, fitText, localBounds, polylineBounds, scaleShape, shapeBounds, shapeToPolylines, tabPositions, toLocal, toWorld, type Bounds } from '../lib/geometry'
@@ -30,6 +31,20 @@ const NAMES = { rect: 'Rectangle', ellipse: 'Ellipse', polygon: 'Polygon' }
 
 const pathD = (polys: Polyline[]) =>
   polys.map((p) => 'M' + p.points.map((q) => q.join(' ')).join('L') + (p.closed ? 'Z' : '')).join('')
+
+function toolpathD(ops: Op[]) {
+  const d = { rough: '', detail: '', rapid: '' }
+  let last: Pt3 | null = null
+  for (const op of ops) {
+    for (const seg of op.segments) {
+      const key = seg.rapid ? 'rapid' : op.role
+      const [first, ...rest] = last ? [last, ...seg.points] : seg.points
+      d[key] += `M${first[0]} ${first[1]}` + rest.map((p) => `L${p[0]} ${p[1]}`).join('')
+      last = seg.points.at(-1)!
+    }
+  }
+  return d
+}
 
 const dist = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1])
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
@@ -115,6 +130,8 @@ export default function Canvas() {
   const view = useAppStore((s) => s.view)
   useAppStore((s) => s.fontsVersion)
   const status = useAppStore((s) => s.status)
+  const cam = useAppStore((s) => (s.step === 'simulate' ? s.cam : null))
+  const toolpaths = cam && toolpathD(cam.ops)
   const svgRef = useRef<SVGSVGElement>(null)
   const [drag, setDrag] = useState<Drag | null>(null)
   const [hover, setHover] = useState<string | null>(null)
@@ -392,6 +409,13 @@ export default function Canvas() {
               </g>
             )
           })}
+          {toolpaths && (
+            <g className="toolpaths">
+              <path className="toolpath-rapid" d={toolpaths.rapid} />
+              <path className="toolpath-rough" d={toolpaths.rough} />
+              <path className="toolpath-detail" d={toolpaths.detail} />
+            </g>
+          )}
           {preview && <path className="preview" d={pathD(shapeToPolylines(preview))} />}
           {penPreview.length > 1 && <path className="preview" fill="none" d={pathD([{ points: penPreview, closed: false }])} />}
         </g>

@@ -83,3 +83,21 @@ test('sets a rectangle to a pocket cut', async ({ page }) => {
   await expect(page.getByRole('slider', { name: 'Depth' })).toHaveValue('3')
   await expect(page.getByLabel('Tabs')).toHaveCount(0)
 })
+
+test('exports G-code for a rectangle', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Rectangle' }).click()
+  const box = (await page.getByLabel('Design canvas').boundingBox())!
+  await page.mouse.move(box.x + box.width / 2 - 50, box.y + box.height / 2 - 30)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 + 50, box.y + box.height / 2 + 30, { steps: 4 })
+  await page.mouse.up()
+
+  await page.getByRole('button', { name: 'Export', exact: true }).click()
+  const button = page.getByRole('button', { name: 'Download G-code' })
+  await expect(button).toBeEnabled()
+  const [download] = await Promise.all([page.waitForEvent('download'), button.click()])
+  expect(download.suggestedFilename()).toMatch(/^Untitled-.*\.nc$/)
+  const gcode = await (await download.createReadStream()).toArray()
+  expect(Buffer.concat(gcode).toString()).toContain('G21 G90 G17')
+})
