@@ -127,7 +127,7 @@ function CutSection({ selected }: { selected: Shape[] }) {
           { value: 'none', label: 'None' },
         ]}
         hint={open ? 'Open paths can only be cut along the path.' : vbit ? undefined : 'V-carve needs a V-bit as the rough or detail bit.'}
-        onChange={(v) => setCut(v === 'none' ? null : { type: v })}
+        onChange={(v) => setCut(v === 'none' ? null : { type: v, ...(v === 'pocket' && cuts.every((c) => !c || c.depth >= t) && { depth: Math.min(3, t / 2) }) })}
       />
       {type === 'outline' && (
         <Segmented

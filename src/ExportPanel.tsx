@@ -29,7 +29,7 @@ export default function ExportPanel() {
       {!busy && cam && !cam.ops.length && <p className="hint">Nothing to export yet. Give a shape a cut in the Design step.</p>}
       <p className="export-note">
         Set Z zero at the top of the stock and XY zero at the bottom-left corner.
-        {roles.length > 1 && ' Run the rough bit first, then change to the detail bit.'}
+        {roles.length > 1 && " Run the rough bit first, then change to the detail bit. After changing bits, re-zero Z only; don't move X or Y."}
       </p>
       <ul className="export-bits">
         {roles.map((role) => {

@@ -46,15 +46,19 @@ function toolpathD(ops: Op[]) {
   return d
 }
 
-// ponytail: judges outside/inside from the first contour's own winding, so an imported hole wound like an outer gets
-// a reversed arrow; the toolpath itself is right. Classify contours by nesting if that matters.
-// A short arrow from a quarter of the way along the first edge (clear of tabs and handles) towards the side the bit runs on.
+const signedArea = (pts: Point[]) => pts.reduce((sum, q, i) => sum + q[0] * pts[(i + 1) % pts.length][1] - pts[(i + 1) % pts.length][0] * q[1], 0) / 2
+
+// A short arrow from a quarter of the way along the first edge (clear of tabs and handles) towards the side the bit
+// runs on. Drawn on the largest contour, which is always an outer whatever the fill rule.
 function sideArrow(polys: Polyline[], outside: boolean, len: number) {
-  const pts = polys.find((p) => p.closed && p.points.length > 2)?.points
-  const d = pts ? dist(pts[0], pts[1]) : 0
+  const pts = polys
+    .filter((p) => p.closed && p.points.length > 2)
+    .map((p) => ({ pts: p.points, area: signedArea(p.points) }))
+    .reduce<{ pts: Point[]; area: number } | null>((best, c) => (!best || Math.abs(c.area) > Math.abs(best.area) ? c : best), null)
+  const d = pts ? dist(pts.pts[0], pts.pts[1]) : 0
   if (!pts || !d) return ''
-  const [a, b] = pts
-  const area = pts.reduce((sum, q, i) => sum + q[0] * pts[(i + 1) % pts.length][1] - pts[(i + 1) % pts.length][0] * q[1], 0)
+  const [a, b] = pts.pts
+  const { area } = pts
   const sgn = area > 0 === outside ? 1 : -1 // the right-hand normal points out of a CCW contour
   const nx = (sgn * (b[1] - a[1])) / d
   const ny = (-sgn * (b[0] - a[0])) / d

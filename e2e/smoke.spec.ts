@@ -3,11 +3,9 @@ import { expect, test } from '@playwright/test'
 test('loads the app shell', async ({ page }) => {
   await page.goto('/')
   await expect(page).toHaveTitle('OpenCarve')
-  for (const name of ['Design', 'Export']) {
+  for (const name of ['Design', 'Simulate', 'Export']) {
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
   }
-  // The Simulate step carries a warning badge ("Nothing to carve").
-  await expect(page.getByRole('button', { name: 'Simulate 1 warning' })).toBeVisible()
 })
 
 test('draws a rectangle and undoes it', async ({ page }) => {
@@ -81,6 +79,7 @@ test('sets a rectangle to a pocket cut', async ({ page }) => {
   await page.getByRole('radio', { name: 'Pocket' }).click()
   await expect(shape).toHaveAttribute('data-cut', 'pocket')
   const depth = page.getByLabel('Depth value', { exact: true })
+  await expect(depth).toHaveValue('3.00') // a through depth becomes a pocket-sized default
   await depth.fill('3')
   await depth.press('Enter')
   await expect(depth).toHaveValue('3.00')
@@ -148,4 +147,18 @@ test('simulate lists ops and selects the shape', async ({ page }) => {
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Rectangle')
   await page.getByRole('button', { name: 'Export', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Download rough G-code' })).toBeEnabled()
+})
+
+test('badges the Simulate step when a shape is partly outside the stock', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByRole('button', { name: 'Simulate', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Rectangle' }).click()
+  const box = (await page.getByLabel('Design canvas').boundingBox())!
+  await page.mouse.move(box.x + 5, box.y + 5)
+  await page.mouse.down()
+  await page.mouse.move(box.x + 120, box.y + 100, { steps: 4 })
+  await page.mouse.up()
+  await expect(page.getByRole('button', { name: 'Simulate 1 warning' })).toBeVisible()
+  await page.getByRole('button', { name: /^Simulate/ }).click()
+  await expect(page.getByRole('list', { name: 'Warnings' })).toContainText('partly outside the stock')
 })

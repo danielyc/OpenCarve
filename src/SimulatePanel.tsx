@@ -41,16 +41,19 @@ export function Summary() {
 
 export function Warnings() {
   const warnings = useAppStore((s) => s.cam?.warnings)
-  if (!warnings?.length) return null
   return (
-    <ul className="warnings" aria-label="Warnings">
-      {warnings.map((w) => (
-        <li key={w}>
-          {icons.warning}
-          {w}
-        </li>
-      ))}
-    </ul>
+    <div aria-live="polite">
+      {!!warnings?.length && (
+        <ul className="warnings" aria-label="Warnings">
+          {warnings.map((w) => (
+            <li key={w}>
+              {icons.warning}
+              {w}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 
@@ -64,9 +67,9 @@ export default function SimulatePanel() {
       <h2>Simulate</h2>
       <Summary />
       <Warnings />
-      <h2>Toolpaths</h2>
+      <h2 id="toolpaths-heading">Toolpaths</h2>
       {cam?.ops.length ? (
-        <ul className="op-list">
+        <ul className="op-list" aria-labelledby="toolpaths-heading">
           {cam.ops.map((op) => {
             const shape = shapes.find((s) => s.id === op.shapeId)
             const key = opKey(op)

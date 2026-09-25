@@ -16,6 +16,7 @@ import {
 } from 'clipper2-ts'
 import { polylineBounds, shapeToPolylines, tabPositions } from '../lib/geometry'
 import { findBit } from '../lib/library'
+import { formatLength } from '../lib/units'
 import { MAX_STEPOVER, tabsActive, type BitRole, type Cut, type CutSettings, type Point, type Project, type Shape } from '../model'
 import { opTimes } from './gcode'
 import { medialAxis, SPACING, type MedialPoint } from './vcarve'
@@ -339,10 +340,11 @@ export function planProject(project: Project): CamResult {
   const last: Op[] = [] // through outlines not cut inside, run after everything else so parts aren't freed early
   let freed = false // a held-back outline without tabs
   const warnings: string[] = []
-  if (stock.w > machine.w || stock.h > machine.h)
-    warnings.push(`Stock (${+stock.w.toFixed(1)}×${+stock.h.toFixed(1)} mm) is larger than the machine work area (${+machine.w.toFixed(1)}×${+machine.h.toFixed(1)} mm)`)
+  if (stock.w > machine.w || stock.h > machine.h) {
+    const size = (w: number, h: number) => `${+formatLength(w, project.units)}×${+formatLength(h, project.units)} ${project.units}`
+    warnings.push(`Stock (${size(stock.w, stock.h)}) is larger than the machine work area (${size(machine.w, machine.h)})`)
+  }
   const carved = project.shapes.filter((s) => s.cut)
-  if (!carved.length) warnings.push('Nothing to carve')
   const rs = cutSettings.rough
   const r = findBit(bits.rough).diameter / 2
   const detailBit = bits.detail ? findBit(bits.detail) : null
