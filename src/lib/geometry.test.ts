@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import type { Shape } from '../model'
-import { gridPath, scaleShape, shapeBounds, shapeToPolylines } from './geometry'
+import { gridPath, gridSteps, scaleShape, shapeBounds, shapeToPolylines } from './geometry'
 
 const base = { id: 'a', name: 'a', x: 50, y: 20, rotation: 0 }
 
@@ -54,4 +54,22 @@ test('a fine grid on a large stock is bounded by the viewport', () => {
   const area = { minX: 400, minY: 400, maxX: 400 + pxW / pxPerMm, maxY: 400 + pxH / pxPerMm }
   const lines = gridPath(1000, 1000, 0.5, area).split('M').length - 1
   expect(lines).toBeLessThanOrEqual(2 * (Math.max(pxW, pxH) / 6))
+})
+
+test('grid steps adapt to the zoom', () => {
+  const steps = (zoom: number, units: 'mm' | 'in' = 'mm', snap = 0) => {
+    const { minor, major, label } = gridSteps(zoom, units, snap)
+    return [+(minor / (units === 'in' ? 25.4 : 1)).toFixed(4), +(major / (units === 'in' ? 25.4 : 1)).toFixed(4), label]
+  }
+  expect(steps(0.1)).toEqual([200, 2000, '200 mm']) // nothing in the series is 5× 200 mm: 10×
+  expect(steps(1)).toEqual([20, 100, '20 mm'])
+  expect(steps(10)).toEqual([2, 10, '2 mm'])
+  expect(steps(40)).toEqual([0.5, 5, '0.5 mm'])
+  expect(steps(1, 'in')).toEqual([0.5, 5, '1/2″']) // 1/2" is 12.7 px
+  expect(steps(5, 'in')).toEqual([0.125, 1, '1/8″'])
+  expect(steps(40, 'in')).toEqual([0.0625, 0.5, '1/16″'])
+  expect(steps(40, 'mm', 2)).toEqual([2, 10, '2 mm'])
+  expect(steps(1, 'mm', 2)).toEqual([20, 100, '20 mm']) // snap lines under 6 px apart: the adaptive grid
+  expect(steps(10, 'mm', 3)).toEqual([3, 30, '3 mm']) // no series value is a multiple of 3 mm: 10×
+  expect(steps(40, 'in', 25.4 / 16)).toEqual([0.0625, 0.5, '1/16″'])
 })

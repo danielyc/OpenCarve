@@ -2,7 +2,7 @@ import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { opKey, type Op, type Pt3 } from '../cam/toolpath'
 import { icons } from '../icons'
 import { FONTS, loadFont } from '../lib/fonts'
-import { dominantScale, fitText, gridPath, localBounds, polylineBounds, scaleShape, shapeBounds, shapeToPolylines, toLocal, toWorld, type Bounds } from '../lib/geometry'
+import { dominantScale, fitText, gridPath, gridSteps, localBounds, polylineBounds, scaleShape, shapeBounds, shapeToPolylines, toLocal, toWorld, type Bounds } from '../lib/geometry'
 import { formatLength, nearestSnap, SNAP_SIZES, snapDelta, snapPoint } from '../lib/units'
 import { DEFAULT_TEXT_LAYOUT, newId, tabsActive, type Point, type Polyline, type Shape } from '../model'
 import { TOOL_KEYS, useAppStore, type Align, type Tool } from '../store'
@@ -379,17 +379,12 @@ export default function Canvas() {
     setDrag(null)
   }
 
-  // Major lines every 50 mm or 1"; the minor grid is the snap grid while snapping (10 mm or 1/4" otherwise).
-  // Lines under the major grid are harmless. Only the visible part is drawn, and not again on cursor-only renders.
+  // Grid spacing adapts to the zoom (see gridSteps). Only the visible part is drawn, and not again on cursor-only renders.
   const [svgW, svgH] = svgSize
-  const { minor, major } = useMemo(() => {
-    const inch = units === 'in'
-    const minorStep = snap.on ? nearestSnap(snap.size, units) : inch ? 6.35 : 10
+  const grid = useMemo(() => {
+    const { minor, major, label } = gridSteps(zoom, units, snap.on ? nearestSnap(snap.size, units) : 0)
     const area = { minX: -panX / zoom, maxX: (svgW - panX) / zoom, minY: (panY - svgH) / zoom, maxY: panY / zoom }
-    return {
-      minor: zoom * minorStep >= 6 ? gridPath(stock.w, stock.h, minorStep, area) : null,
-      major: gridPath(stock.w, stock.h, inch ? 25.4 : 50, area),
-    }
+    return { label, minor: gridPath(stock.w, stock.h, minor, area), major: gridPath(stock.w, stock.h, major, area) }
   }, [stock.w, stock.h, snap.on, snap.size, units, panX, panY, zoom, svgW, svgH])
 
   const preview =
@@ -469,8 +464,8 @@ export default function Canvas() {
       >
         <g transform={`translate(${panX} ${panY}) scale(${zoom} ${-zoom})`}>
           <rect className="material" width={stock.w} height={stock.h} />
-          {minor !== null && <path className="grid-minor" d={minor} />}
-          <path className="grid-major" d={major} />
+          <path className="grid-minor" d={grid.minor} />
+          <path className="grid-major" d={grid.major} />
           <rect className="material-edge" width={stock.w} height={stock.h} />
           {project.shapes.map((s) => {
             const polys = shapeToPolylines(s)
@@ -532,6 +527,7 @@ export default function Canvas() {
       </svg>
       <div className="canvas-status" aria-live="off">
         {cursor ? `X ${formatLength(cursor[0] - project.origin.x, units)}  Y ${formatLength(cursor[1] - project.origin.y, units)} ${units}` : ' '}
+        <span className="grid-step">Grid {grid.label}</span>
         {status && (
           <span className="status-error" role="alert">
             {status}

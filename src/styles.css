@@ -372,6 +372,10 @@ button:disabled {
   white-space: pre;
 }
 
+.grid-step {
+  margin-left: 16px;
+}
+
 .preview3d {
   display: grid;
   place-items: center;

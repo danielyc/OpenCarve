@@ -1,5 +1,6 @@
 import type { Point, Polyline, Shape, ShapeBase, TextShape } from '../model'
 import { textGlyphs } from './fonts'
+import type { Units } from './units'
 
 export type Bounds = { minX: number; minY: number; maxX: number; maxY: number }
 type Placement = Pick<ShapeBase, 'x' | 'y' | 'rotation'>
@@ -131,4 +132,29 @@ export function gridPath(w: number, h: number, step: number, area: Bounds) {
   for (let i = Math.max(1, Math.ceil(x0 / step)); i * step <= x1 && i * step < w; i++) d.push(`M${i * step} ${y0}V${y1}`)
   for (let i = Math.max(1, Math.ceil(y0 / step)); i * step <= y1 && i * step < h; i++) d.push(`M${x0} ${i * step}H${x1}`)
   return d.join('')
+}
+
+const GRID_SERIES: Record<Units, number[]> = {
+  mm: [0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500],
+  in: [1 / 16, 1 / 8, 1 / 4, 1 / 2, 1, 2, 5, 10].map((v) => v * 25.4),
+}
+const isMultiple = (v: number, of: number) => Math.abs(v / of - Math.round(v / of)) < 1e-9
+
+export const gridLabel = (mm: number, units: Units) => {
+  if (units === 'mm') return `${mm} mm`
+  const inches = mm / 25.4
+  return inches < 1 ? `1/${Math.round(1 / inches)}″` : `${+inches.toFixed(3)}″`
+}
+
+// Grid steps (mm) for a zoom in px per mm. The minor step is the snap size (snap in mm, 0 = off) while its lines
+// are at least 6 px apart, otherwise the smallest series value at least 12 px apart; the major step is the next
+// series value of at least 5 minor steps and 60 px (a multiple of the snap size while snapping), else 10 minor steps.
+export function gridSteps(zoom: number, units: Units, snap: number) {
+  const series = GRID_SERIES[units]
+  const snapping = snap > 0 && snap * zoom >= 6
+  const minor = snapping ? snap : (series.find((v) => v * zoom >= 12) ?? series.at(-1)!)
+  const major =
+    series.find((v) => v >= 5 * minor - 1e-9 && v * zoom >= 60 && (!snapping || isMultiple(v, minor))) ??
+    [10, 20, 50, 100, 200, 500, 1000].map((k) => k * minor).find((v) => v * zoom >= 60)!
+  return { minor, major, label: gridLabel(minor, units) }
 }

@@ -104,6 +104,7 @@ test('snaps a drawn rectangle to the grid, unless Alt is held', async ({ page })
   await snap.click()
   await expect(snap).toHaveAttribute('aria-pressed', 'true')
   await page.getByLabel('Snap size').selectOption({ label: '10 mm' })
+  await expect(page.locator('.grid-step')).toHaveText('Grid 10 mm') // the minor grid shows the snap size
   const box = (await page.getByLabel('Design canvas').boundingBox())!
   const cx = box.x + box.width / 2
   const cy = box.y + box.height / 2
