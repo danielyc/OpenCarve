@@ -120,24 +120,78 @@ function arcLengths(pts: Point[]) {
 
 const lerpPt = (a: Point, b: Point, t: number): Point => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]
 
+const CORNER = (20 * Math.PI) / 180 // turning within a tab width around a point that makes it a corner
+
+// Point and direction at arc length c along pts.
+function pointAt(pts: Point[], cum: number[], c: number) {
+  const j = Math.max(1, cum.findIndex((a) => a >= c))
+  const [a, b] = [pts[j - 1], pts[j]]
+  return { j, p: lerpPt(a, b, cum[j] > cum[j - 1] ? (c - cum[j - 1]) / (cum[j] - cum[j - 1]) : 0), angle: Math.atan2(b[1] - a[1], b[0] - a[0]) }
+}
+
 // Tabs on one closed tool-centre loop: the shape's tabCount on its longest loop (longest), proportionally fewer on
-// shorter ones but at least one, evenly spaced by arc length starting half a spacing in so the plunge at the loop's
-// start never lands on a tab. At most half the loop is tab; a loop under 2 tab widths gets one tab of up to half its
-// length, one under a tab width none.
+// shorter ones but at least one, evenly spaced by arc length starting half a spacing in. At most half the loop is
+// tab; a loop under 2 tab widths gets one tab of up to half its length, one under a tab width none.
+// A tab on a corner leaves a sliver, so each tab whose span meets a corner (turning over a tab width around a point
+// above CORNER; offset corners are arcs of many small segments, hence the window) moves to the nearest corner-free
+// span within half a spacing, clear of the other tabs; failing that it stays put, so circles keep even spacing.
+// If a tab then covers the loop's start, the loop restarts in the widest gap so the plunge never lands on one.
 export function loopTabs(pts: Point[], count: number, longest: number, width: number) {
-  const cum = arcLengths(pts)
+  let cum = arcLengths(pts)
   const total = cum.at(-1)!
-  if (total < width) return { centres: [], width, tabs: [] }
+  if (total < width) return { pts, centres: [], width, tabs: [] }
   const w = Math.min(width, total / 2)
   const n = Math.max(1, Math.min(Math.round((count * total) / longest), Math.floor(total / 2 / w)))
-  const centres = Array.from({ length: n }, (_, i) => ((i + 0.5) * total) / n)
+  const spacing = total / n
+  // Corner flags on a grid of step h: each vertex's turning counts for every grid point within w/2 of it.
+  const m = Math.max(1, Math.ceil(total / Math.min(w / 8, 0.25)))
+  const h = total / m
+  const turn = new Float64Array(m)
+  let prev = -1
+  for (let i = pts.length - 2; i >= 0 && prev < 0; i--) if (cum[i + 1] > cum[i]) prev = i
+  for (let i = 0; i < pts.length - 1; i++) {
+    if (cum[i + 1] <= cum[i]) continue
+    const d = (i: number) => Math.atan2(pts[i + 1][1] - pts[i][1], pts[i + 1][0] - pts[i][0])
+    const a = Math.abs(((d(i) - d(prev) + 3 * Math.PI) % (2 * Math.PI)) - Math.PI)
+    prev = i
+    for (let k = Math.ceil((cum[i] - w / 2) / h); k <= Math.floor((cum[i] + w / 2) / h); k++) turn[((k % m) + m) % m] += a
+  }
+  // prefix[k]: corner grid points before k, over two laps so spans can wrap.
+  const prefix = [0]
+  for (let k = 0; k < 2 * m; k++) prefix.push(prefix[k] + (turn[k % m] > CORNER ? 1 : 0))
+  const free = (c: number) => {
+    const start = (((c - w / 2) % total) + total) % total
+    return prefix[Math.floor((start + w) / h) + 1] === prefix[Math.ceil(start / h)]
+  }
+  const gap = (a: number, b: number) => Math.min(Math.abs(a - b), total - Math.abs(a - b))
+  const clear = (c: number, placed: number[]) => placed.every((q) => gap(c, q) >= w)
+  let centres: number[] = []
+  for (let i = 0; i < n; i++) {
+    const c = (i + 0.5) * spacing
+    let best = free(c) && clear(c, centres) ? c : null
+    for (let d = h; best === null && d <= spacing / 2; d += h)
+      for (const e of [(c + d) % total, (c - d + total) % total]) if (best === null && free(e) && clear(e, centres)) best = e
+    best ??= clear(c, centres) ? c : null
+    if (best !== null) centres.push(best)
+  }
+  centres.sort((a, b) => a - b)
+  if (centres.some((c) => gap(c, 0) < w / 2)) {
+    let s0 = 0
+    let widest = -1
+    centres.forEach((a, i) => {
+      const b = i + 1 < centres.length ? centres[i + 1] : centres[0] + total
+      if (b - a > widest) [widest, s0] = [b - a, (a + (b - a) / 2) % total]
+    })
+    const { j, p } = pointAt(pts, cum, s0)
+    pts = [p, ...pts.slice(j, -1), ...pts.slice(0, j), p]
+    cum = arcLengths(pts)
+    centres = centres.map((c) => (c - s0 + total) % total).sort((a, b) => a - b)
+  }
   const tabs = centres.map((c): Tab => {
-    const j = Math.max(1, cum.findIndex((a) => a >= c))
-    const [a, b] = [pts[j - 1], pts[j]]
-    const [x, y] = lerpPt(a, b, cum[j] > cum[j - 1] ? (c - cum[j - 1]) / (cum[j] - cum[j - 1]) : 0)
-    return { x, y, angle: Math.atan2(b[1] - a[1], b[0] - a[0]), width: w }
+    const { p, angle } = pointAt(pts, cum, c)
+    return { x: p[0], y: p[1], angle, width: w }
   })
-  return { centres, width: w, tabs }
+  return { pts, centres, width: w, tabs }
 }
 
 // Raises Z to tabZ over width around each centre (arc length along the closed loop pts).
@@ -421,8 +475,9 @@ export function planProject(project: Project): CamResult {
         if (lt && !lt.centres.length)
           warnings.push(cut.side === 'outside' && areaD(paths[k]) > 0 ? `A piece of ${shape.name} is too small for a tab and will come loose` : `Loop too small for a tab in ${shape.name}`)
         tabs.push(...(lt?.tabs ?? []))
+        const loop = lt?.pts ?? pts
         zs.forEach((z, i) => {
-          const pass = lt?.centres.length && z < tabZ! ? withTabs(pts, z, tabZ!, lt.centres, lt.width) : pts.map((p): Pt3 => [...p, z])
+          const pass = lt?.centres.length && z < tabZ! ? withTabs(loop, z, tabZ!, lt.centres, lt.width) : loop.map((p): Pt3 => [...p, z])
           L.moveTo(pass[0], i > 0)
           L.cut(pass.slice(1))
         })

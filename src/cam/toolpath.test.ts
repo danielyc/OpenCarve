@@ -494,6 +494,54 @@ describe('tabs on every cut loop', () => {
     expect(tabs.every((t) => loopIndex(t, loops) >= 0)).toBe(true)
     assertRaisesMatchTabs(op, loops, tabs)
   })
+  // Total turning of the loop over a tab's span.
+  const spanTurning = ([x, y]: Point, loop: PathD, w: number) => {
+    const { s, total } = onLoop([x, y], loop)
+    const dir = (i: number) => {
+      const [a, b] = [loop[i % loop.length], loop[(i + 1) % loop.length]]
+      return Math.atan2(b.y - a.y, b.x - a.x)
+    }
+    let at = 0
+    let sum = 0
+    loop.forEach((a, i) => {
+      const d = Math.abs(at - s)
+      if (Math.min(d, total - d) <= w / 2) sum += Math.abs(((dir(i) - dir(i + loop.length - 1) + 3 * Math.PI) % (2 * Math.PI)) - Math.PI)
+      const b = loop[(i + 1) % loop.length]
+      at += Math.hypot(b.x - a.x, b.y - a.y)
+    })
+    return (sum * 180) / Math.PI
+  }
+  it.each([0, 30])('100×60 rect rotated %i°: one tab per straight side, near its middle', (rotation) => {
+    const { op, loops, tabs } = plan({ ...rect(100, 60), rotation, cut: { ...defaultCut(12), tabCount: 4 } })
+    expect(tabs).toHaveLength(4)
+    for (const t of tabs) expect(spanTurning(t, loops[0], 6)).toBeLessThan(5)
+    const [c, sn] = [Math.cos((rotation * Math.PI) / 180), Math.sin((rotation * Math.PI) / 180)]
+    const mids = ([[0, -30 - R], [50 + R, 0], [0, 30 + R], [-50 - R, 0]] as Point[]).map(([x, y]): Point => [50 + x * c - y * sn, 50 + x * sn + y * c])
+    for (const m of mids) expect(tabs.filter((t) => Math.hypot(t[0] - m[0], t[1] - m[1]) < 15)).toHaveLength(1)
+    assertRaisesMatchTabs(op, loops, tabs)
+  })
+  it('a circle keeps evenly spaced tabs', () => {
+    const { op, loops, tabs } = plan({ ...rect(20, 20), type: 'ellipse', cut: { ...defaultCut(12), tabCount: 4 } } as Shape)
+    expect(tabs).toHaveLength(4)
+    const at = tabs.map((t) => onLoop(t, loops[0]))
+    const s = at.map((a) => a.s).sort((a, b) => a - b)
+    s.forEach((a, i) => expect(Math.abs((i + 1 < s.length ? s[i + 1] : s[0] + at[0].total) - a - at[0].total / 4)).toBeLessThan(0.5))
+    assertRaisesMatchTabs(op, loops, tabs)
+  })
+  it('an L keeps its tabs on straight stretches', () => {
+    const l: Point[] = [[0, 0], [60, 0], [60, 15], [15, 15], [15, 50], [0, 50]]
+    const { op, loops, tabs } = plan({ id: 'l', type: 'path', name: 'L', x: 100, y: 100, rotation: 0, closed: true, points: l, cut: { ...defaultCut(12), tabCount: 2 } })
+    expect(tabs).toHaveLength(2)
+    for (const t of tabs) expect(spanTurning(t, loops[0], 6)).toBeLessThan(5)
+    assertRaisesMatchTabs(op, loops, tabs)
+  })
+  // Even spacing alone puts a tab on a corner arc for every one of these.
+  it.each([[100, 20, 3], [50, 50, 2], [50, 50, 5], [120, 40, 4], [30, 30, 3], [200, 20, 5]])('%i×%i rect, %i tabs: none on a corner', (w, h, n) => {
+    const { op, loops, tabs } = plan({ ...rect(w, h), cut: { ...defaultCut(12), tabCount: n } })
+    expect(tabs).toHaveLength(n)
+    for (const t of tabs) expect(spanTurning(t, loops[0], 6)).toBeLessThan(5)
+    assertRaisesMatchTabs(op, loops, tabs)
+  })
   it('a loop shorter than a tab gets none and warns', () => {
     const { res, op } = plan({ ...rect(1, 1), cut: { ...defaultCut(12), side: 'on' } })
     expect(op.tabs).toBeUndefined()
