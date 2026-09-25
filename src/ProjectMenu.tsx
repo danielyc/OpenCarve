@@ -10,11 +10,11 @@ export default function ProjectMenu() {
   const [draft, setDraft] = useState<string | null>(null)
   const cancelled = useRef(false)
 
-  // <details> doesn't close on its own on Escape or an outside click.
+  // <details> menus (File, shortcuts help) don't close on their own on Escape or an outside click.
   useEffect(() => {
     const close = (e: Event) => {
-      const d = menu.current
-      if (d?.open && (e instanceof KeyboardEvent ? e.key === 'Escape' : !d.contains(e.target as Node))) d.open = false
+      for (const d of document.querySelectorAll<HTMLDetailsElement>('details.project-actions[open]'))
+        if (e instanceof KeyboardEvent ? e.key === 'Escape' : !d.contains(e.target as Node)) d.open = false
     }
     document.addEventListener('pointerdown', close)
     document.addEventListener('keydown', close)

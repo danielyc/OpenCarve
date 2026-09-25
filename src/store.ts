@@ -10,6 +10,7 @@ import { defaultCut, newId, newProject, validCut, type BitRole, type Cut, type C
 export type Step = 'design' | 'simulate' | 'export'
 export type Screen = 'home' | 'editor'
 export type Tool = 'select' | 'rect' | 'ellipse' | 'polygon' | 'pen' | 'text'
+export const TOOL_KEYS: Record<Tool, string> = { select: 'V', rect: 'R', ellipse: 'E', polygon: 'P', pen: 'N', text: 'T' }
 export type Align = 'left' | 'centerX' | 'right' | 'top' | 'centerY' | 'bottom'
 export interface View {
   zoom: number

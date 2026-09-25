@@ -5,7 +5,7 @@ import { FONTS, loadFont } from '../lib/fonts'
 import { dominantScale, fitText, localBounds, polylineBounds, scaleShape, shapeBounds, shapeToPolylines, tabPositions, toLocal, toWorld, type Bounds } from '../lib/geometry'
 import { formatLength } from '../lib/units'
 import { newId, tabsActive, type Point, type Polyline, type Shape } from '../model'
-import { useAppStore, type Align } from '../store'
+import { TOOL_KEYS, useAppStore, type Align, type Tool } from '../store'
 
 type Frame = { x: number; y: number; rotation: number; b: Bounds }
 type Drag =
@@ -143,6 +143,7 @@ const fitTo = (svg: SVGSVGElement | null) => {
   if (svg?.clientWidth) useAppStore.getState().fitView(svg.clientWidth, svg.clientHeight)
 }
 
+const keyTool = Object.fromEntries(Object.entries(TOOL_KEYS).map(([t, k]) => [k.toLowerCase(), t as Tool]))
 const isTyping = (t: EventTarget | null) => t instanceof Element && !!t.closest('input, textarea, select, [contenteditable="true"]')
 
 export default function Canvas() {
@@ -239,6 +240,7 @@ export default function Canvas() {
     else if (key === 'delete' || key === 'backspace') st.deleteSelected()
     else if (key in arrows && !mod) st.nudge(...arrows[key])
     else if (key === 'enter' && pen.length) finishPen(pen)
+    else if (!mod && !e.altKey && keyTool[key]) st.setTool(keyTool[key])
     else if (key === 'escape') {
       if (pen.length) setPen([])
       else st.setSelection([])

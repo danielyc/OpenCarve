@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useCam } from './cam/useCam'
 import Canvas from './canvas/Canvas'
 import ExportPanel from './ExportPanel'
@@ -8,7 +8,7 @@ import { importSvg } from './lib/svgImport'
 import Preview3D from './preview/Preview3D'
 import ProjectMenu from './ProjectMenu'
 import SimulatePanel from './SimulatePanel'
-import { useAppStore, type Step, type Tool } from './store'
+import { TOOL_KEYS, useAppStore, type Step, type Tool } from './store'
 
 const STEPS: { id: Step; label: string }[] = [
   { id: 'design', label: 'Design' },
@@ -23,6 +23,19 @@ const TOOLS: { id: Tool; label: string }[] = [
   { id: 'polygon', label: 'Polygon' },
   { id: 'pen', label: 'Pen' },
   { id: 'text', label: 'Text' },
+]
+
+const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'
+const SHORTCUTS: [string, string][] = [
+  ...TOOLS.map((t): [string, string] => [TOOL_KEYS[t.id], `${t.label} tool`]),
+  ['Delete', 'Delete selection'],
+  [`${mod}+Z`, 'Undo'],
+  [`${mod}+⇧Z`, 'Redo'],
+  [`${mod}+D`, 'Duplicate'],
+  ['Arrows', 'Nudge 1 mm (⇧ 10 mm)'],
+  ['Esc', 'Deselect / cancel'],
+  ['Space+drag', 'Pan'],
+  [`${mod}+wheel`, 'Zoom'],
 ]
 
 async function importFile(file: File | undefined) {
@@ -45,7 +58,12 @@ export default function App() {
   const warnings = useAppStore((s) => s.cam?.warnings.length ?? 0)
   const fileRef = useRef<HTMLInputElement>(null)
   const [dropping, setDropping] = useState(false)
+  const name = useAppStore((s) => s.project.name)
   useCam()
+  useEffect(() => {
+    document.title = `${name} – OpenCarve`
+    return () => void (document.title = 'OpenCarve')
+  }, [name])
 
   return (
     <div
@@ -78,11 +96,25 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <span />
+        <details className="project-actions help">
+          <summary className="menu-button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts">
+            ?
+          </summary>
+          <dl className="menu shortcuts">
+            {SHORTCUTS.map(([k, v]) => (
+              <div key={k}>
+                <dt>
+                  <kbd>{k}</kbd>
+                </dt>
+                <dd>{v}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
       </header>
       <aside className="tools" aria-label="Tools">
         {TOOLS.map((t) => (
-          <button key={t.id} aria-pressed={tool === t.id} onClick={() => setTool(t.id)}>
+          <button key={t.id} aria-pressed={tool === t.id} title={`${t.label} (${TOOL_KEYS[t.id]})`} onClick={() => setTool(t.id)}>
             {icons[t.id]}
             {t.label}
           </button>

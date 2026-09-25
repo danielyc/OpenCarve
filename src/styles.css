@@ -1014,3 +1014,42 @@ input.project-name {
 .save-failed {
   color: #c92a2a;
 }
+
+.help {
+  justify-self: end;
+}
+
+.help .menu.shortcuts {
+  left: auto;
+  right: 0;
+  min-width: 230px;
+  margin: 0;
+  padding: 8px 10px;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.shortcuts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shortcuts dt,
+.shortcuts dd {
+  margin: 0;
+}
+
+.shortcuts dd {
+  color: var(--muted);
+}
+
+.shortcuts kbd {
+  font: inherit;
+  font-weight: 500;
+}
+
+.home-intro {
+  margin: 0 0 28px;
+  color: var(--muted);
+}

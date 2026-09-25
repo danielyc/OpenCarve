@@ -24,3 +24,25 @@ ease of use (Design → Simulate → Export) without the carve limits or paywall
 8. **Simulate + Export UI** — toolpath overlay on 2D canvas, warnings (bit larger than pocket, depth > material), G-code download, per-bit files for two-stage carves, estimated time.
 9. **Persistence** — IndexedDB autosave, project list/home screen, new/open/save-as `.opencarve`, unit toggle persisted.
 10. **Polish + smoke test** — Playwright flow (new project → rect → pocket → export), README usage docs, GitHub Pages build config.
+
+## Status
+All ten steps are done.
+1. Scaffold: bun + Vite + React + TS app shell with the Design/Simulate/Export step bar; lint, Vitest and Playwright set up.
+2. Document model + 2D canvas: Zustand store, SVG canvas with draw/select/transform tools, align, nudge, undo/redo, inspector.
+3. Text + SVG import: 4 bundled OFL fonts via opentype.js; SVG paths, shapes, transforms and groups flattened to polylines.
+4. Materials, bits, cut settings: bundled library with recommended feeds, machine presets, per-shape cuts with tabs, rough + detail bits.
+5. Toolpath engine: worker-based profiles, pockets, depth passes, tabs, rough/detail rest machining, GRBL G-code, time estimate.
+6. V-carve: medial-axis V-carve with flat-floor clearing by the endmill or the V-bit.
+7. 3D preview: heightmap material-removal simulation in a worker, three.js mesh, toolpath lines, orbit controls.
+8. Simulate + Export UI: 2D toolpath overlay, per-op list, warnings, per-bit G-code downloads, setup note.
+9. Persistence: IndexedDB autosave, home screen with project list, `.opencarve` open/save.
+10. Polish: full-flow e2e, README, CI and GitHub Pages workflows, relative build paths, tool shortcuts and shortcut help, page title.
+
+### Known limitations
+- Text is single-line, with no ligatures or complex-script shaping.
+- SVG import ignores `<use>`, `<text>` and CSS styling.
+- V-carve floors can show ridges of about 0.2 mm.
+- No ramped entries: every depth pass plunges straight down.
+- No image tracing.
+- No machine sender (by design).
+- Autosave is last-write-wins when the same project is open in several tabs.

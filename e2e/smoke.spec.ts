@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('loads the app shell', async ({ page }) => {
-  await expect(page).toHaveTitle('OpenCarve')
+  await expect(page).toHaveTitle('Untitled – OpenCarve')
   for (const name of ['Design', 'Simulate', 'Export']) {
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
   }
