@@ -73,6 +73,7 @@ export default function SimulatePanel() {
   const shapes = useAppStore((s) => s.project.shapes)
   const cam = useAppStore((s) => s.cam)
   const selection = useAppStore((s) => s.selection)
+  const busy = useAppStore((s) => s.camBusy)
   const highlight = useAppStore((s) => s.highlightOp)
   const settings = useAppStore((s) => s.project.cutSettings)
   // Clicking an op also seeks the animation to where that op starts.
@@ -81,7 +82,7 @@ export default function SimulatePanel() {
     if (start !== undefined) useAppStore.getState().setAnim({ t: start })
   }
   return (
-    <>
+    <div data-cam-busy={busy}>
       <h2>Simulate</h2>
       <Summary />
       <Warnings />
@@ -115,6 +116,6 @@ export default function SimulatePanel() {
       ) : (
         <p className="hint">No toolpaths yet. Give a shape a cut in the Design step.</p>
       )}
-    </>
+    </div>
   )
 }

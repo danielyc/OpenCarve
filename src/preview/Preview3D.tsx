@@ -261,7 +261,7 @@ export default function Preview3D() {
           renderer.setSize(w, h, false)
           if (v.moved) project(v)
           else frame(v)
-          v.render()
+          sync() // a no-op until viewRef is set; the ready effects draw the first frame
         }
         resize()
         const ro = new ResizeObserver(resize)
@@ -288,7 +288,7 @@ export default function Preview3D() {
       cancelled = true
       cleanup()
     }
-  }, [])
+  }, [sync])
 
   // A new timeline starts at its end, showing the finished job (declared first so the effects below see it).
   useEffect(() => {
