@@ -1,13 +1,28 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { OpenFileButton } from './Home'
 import { downloadProject, goHome } from './lib/persist'
 import { useAppStore } from './store'
 
 export default function ProjectMenu() {
   const name = useAppStore((s) => s.project.name)
-  const saving = useAppStore((s) => s.saving)
+  const saveState = useAppStore((s) => s.saveState)
+  const menu = useRef<HTMLDetailsElement>(null)
   const [draft, setDraft] = useState<string | null>(null)
   const cancelled = useRef(false)
+
+  // <details> doesn't close on its own on Escape or an outside click.
+  useEffect(() => {
+    const close = (e: Event) => {
+      const d = menu.current
+      if (d?.open && (e instanceof KeyboardEvent ? e.key === 'Escape' : !d.contains(e.target as Node))) d.open = false
+    }
+    document.addEventListener('pointerdown', close)
+    document.addEventListener('keydown', close)
+    return () => {
+      document.removeEventListener('pointerdown', close)
+      document.removeEventListener('keydown', close)
+    }
+  }, [])
 
   const commitName = () => {
     const next = draft?.trim()
@@ -44,12 +59,13 @@ export default function ProjectMenu() {
           }}
         />
       )}
-      <span className="save-status" aria-live="polite">
-        {saving ? 'Saving…' : 'Saved'}
+      <span className="save-status">{saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : ''}</span>
+      <span className="save-status save-failed" aria-live="polite">
+        {saveState === 'failed' ? 'Not saved — retrying' : ''}
       </span>
-      <details className="project-actions">
+      <details className="project-actions" ref={menu}>
         <summary className="menu-button">File</summary>
-        <div className="menu" onClick={(e) => e.currentTarget.parentElement?.removeAttribute('open')}>
+        <div className="menu" onClick={() => menu.current?.removeAttribute('open')}>
           <button onClick={() => useAppStore.getState().newProject()}>New project</button>
           <OpenFileButton>Open file…</OpenFileButton>
           <button onClick={() => downloadProject(useAppStore.getState().project)}>Save as file</button>

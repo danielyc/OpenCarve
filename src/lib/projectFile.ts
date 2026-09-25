@@ -1,5 +1,6 @@
-import { defaultCut, newProject, validCut, type Cut, type CutSettings, type Point, type Polyline, type Project, type Shape } from '../model'
-import { findBit, findMaterial, recommendedSettings } from './library'
+import { defaultCut, MAX_STEPOVER, newId, newProject, validCut, type Cut, type CutSettings, type Point, type Polyline, type Project, type Shape } from '../model'
+import { FONTS } from './fonts'
+import { BITS, findBit, findMaterial, MATERIALS, recommendedSettings } from './library'
 
 // A self-contained, versioned document: the same JSON is the download format and the IndexedDB record,
 // so a sync backend can store it verbatim later.
@@ -20,6 +21,10 @@ const obj = (v: unknown, what: string): Obj => (isObj(v) ? v : fail(`${what} mus
 function num(o: Obj, key: string, what: string, def?: number, min = -Infinity): number {
   const v = o[key] ?? def
   return typeof v === 'number' && Number.isFinite(v) && v >= min ? v : fail(`${what}.${key} must be a number${min > -Infinity ? ` ≥ ${min}` : ''}`)
+}
+function positive(o: Obj, key: string, what: string, def: number): number {
+  const v = num(o, key, what, def)
+  return v > 0 ? v : fail(`${what}.${key} must be > 0`)
 }
 function str(o: Obj, key: string, what: string, def?: string): string {
   const v = o[key] ?? def
@@ -55,7 +60,7 @@ function cut(v: unknown, what: string, thickness: number): Cut {
   }
 }
 
-function shape(v: unknown, i: number, thickness: number): Shape {
+function shape(v: unknown, i: number, thickness: number, warn: (msg: string) => void): Shape {
   const what = `shapes[${i}]`
   const o = obj(v, what)
   const type = oneOf(o, 'type', what, ['rect', 'ellipse', 'polygon', 'path', 'text', 'compound'] as const)
@@ -75,14 +80,20 @@ function shape(v: unknown, i: number, thickness: number): Shape {
       s = { ...base, type, ...size() }
       break
     case 'polygon':
-      s = { ...base, type, ...size(), sides: Math.round(num(o, 'sides', what, 6, 3)) }
+      s = { ...base, type, ...size(), sides: Math.min(64, Math.max(3, Math.round(num(o, 'sides', what, 6)))) }
       break
     case 'path':
       s = { ...base, type, points: points(o.points, `${what}.points`), closed: bool(o, 'closed', what, false) }
       break
-    case 'text':
-      s = { ...base, type, ...size(), text: str(o, 'text', what), font: str(o, 'font', what, 'roboto'), size: num(o, 'size', what, undefined, 0) }
+    case 'text': {
+      let font = str(o, 'font', what, FONTS[0].id)
+      if (!FONTS.some((f) => f.id === font)) {
+        warn(`Unknown font "${font}", using ${FONTS[0].name}.`)
+        font = FONTS[0].id
+      }
+      s = { ...base, type, ...size(), text: str(o, 'text', what), font, size: num(o, 'size', what, undefined, 0) }
       break
+    }
     case 'compound': {
       if (!Array.isArray(o.paths)) fail(`${what}.paths must be an array`)
       const paths = (o.paths as unknown[]).map((p, j): Polyline => {
@@ -99,17 +110,18 @@ function settings(v: unknown, what: string, fallback: CutSettings): CutSettings 
   if (v === undefined) return fallback
   const o = obj(v, what)
   return {
-    feed: num(o, 'feed', what, fallback.feed, 0),
-    plunge: num(o, 'plunge', what, fallback.plunge, 0),
-    stepdown: num(o, 'stepdown', what, fallback.stepdown, 0),
-    rpm: num(o, 'rpm', what, fallback.rpm, 0),
-    safeZ: num(o, 'safeZ', what, fallback.safeZ, 0),
-    stepover: num(o, 'stepover', what, fallback.stepover, 0),
+    feed: positive(o, 'feed', what, fallback.feed),
+    plunge: positive(o, 'plunge', what, fallback.plunge),
+    stepdown: positive(o, 'stepdown', what, fallback.stepdown),
+    rpm: positive(o, 'rpm', what, fallback.rpm),
+    safeZ: num(o, 'safeZ', what, fallback.safeZ, 0.5),
+    stepover: Math.min(MAX_STEPOVER, positive(o, 'stepover', what, fallback.stepover)),
     direction: oneOf(o, 'direction', what, ['climb', 'conventional'] as const, fallback.direction),
   }
 }
 
-export function parseProject(text: string): Project {
+// Recoverable problems (unknown material or font) fall back to defaults and are reported through `warnings`.
+export function parseProject(text: string, warnings: string[] = []): Project {
   let data: unknown
   try {
     data = JSON.parse(text)
@@ -124,16 +136,28 @@ export function parseProject(text: string): Project {
 
   const so = obj(p.stock, 'stock')
   const stock = { w: num(so, 'w', 'stock', undefined, 1), h: num(so, 'h', 'stock', undefined, 1), thickness: num(so, 'thickness', 'stock', undefined, 0.2) }
-  const materialId = str(p, 'materialId', 'project', d.materialId)
+  let materialId = str(p, 'materialId', 'project', d.materialId)
+  if (!MATERIALS.some((m) => m.id === materialId)) {
+    warnings.push(`Unknown material "${materialId}", using ${findMaterial(d.materialId).name}.`)
+    materialId = d.materialId
+  }
   const mo = p.machine === undefined ? d.machine : obj(p.machine, 'machine')
   const machine = { name: str(mo, 'name', 'machine'), w: num(mo, 'w', 'machine', undefined, 1), h: num(mo, 'h', 'machine', undefined, 1), maxRpm: num(mo, 'maxRpm', 'machine', undefined, 1) }
   const bo = p.bits === undefined ? d.bits : obj(p.bits, 'bits')
   const detail = bo.detail === undefined ? undefined : str(bo, 'detail', 'bits')
   const bits = { rough: str(bo, 'rough', 'bits'), ...(detail && { detail }) }
+  for (const id of [bits.rough, detail]) if (id !== undefined && !BITS.some((b) => b.id === id)) fail(`unknown bit ${id}`)
   const rec = (id: string) => recommendedSettings(findMaterial(materialId), findBit(id), machine.maxRpm)
   const co = p.cutSettings === undefined ? {} : obj(p.cutSettings, 'cutSettings')
   const custom = p.cutSettingsCustom === undefined ? {} : obj(p.cutSettingsCustom, 'cutSettingsCustom')
   if (!Array.isArray(p.shapes)) fail('shapes must be an array')
+  const ids = new Set<string>()
+  const shapes = (p.shapes as unknown[]).map((v, i) => {
+    const s = shape(v, i, stock.thickness, (msg) => warnings.includes(msg) || warnings.push(msg))
+    if (ids.has(s.id)) s.id = newId() // ids must be unique for selection and toolpath ops
+    ids.add(s.id)
+    return s
+  })
 
   return {
     id: str(p, 'id', 'project'),
@@ -151,6 +175,6 @@ export function parseProject(text: string): Project {
       detail: !!detail && bool(custom, 'detail', 'cutSettingsCustom', false),
     },
     machine,
-    shapes: (p.shapes as unknown[]).map((s, i) => shape(s, i, stock.thickness)),
+    shapes,
   }
 }

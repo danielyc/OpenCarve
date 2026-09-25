@@ -6,18 +6,20 @@ import type { SimInput, SimResult } from './sim'
 const DEBOUNCE_MS = 200
 let worker: Worker | null = null
 let latest = 0
+let latestProject = '' // a result for a project that's no longer open is dropped even if its id is still the latest
 
 function run(input: Omit<SimInput, 'id'>) {
   if (!worker) {
     worker = new Worker(new URL('./simWorker.ts', import.meta.url), { type: 'module' })
     worker.onmessage = (e: MessageEvent<SimResult>) => {
-      if (e.data.id === latest) useAppStore.setState({ sim: e.data, simBusy: false })
+      if (e.data.id === latest && latestProject === useAppStore.getState().project.id) useAppStore.setState({ sim: e.data, simBusy: false })
     }
     worker.onerror = (e) => {
       console.error('Simulation failed', e.message)
       useAppStore.setState({ simBusy: false })
     }
   }
+  latestProject = useAppStore.getState().project.id
   worker.postMessage({ ...input, id: ++latest })
 }
 

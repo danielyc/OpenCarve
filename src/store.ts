@@ -22,7 +22,7 @@ const FIT_MARGIN = 40
 
 interface AppState {
   screen: Screen
-  saving: boolean
+  saveState: 'saved' | 'saving' | 'failed'
   step: Step
   project: Project
   selection: string[]
@@ -102,7 +102,7 @@ export const useAppStore = create<AppState>()((set, get) => {
 
   return {
     screen: 'home',
-    saving: false,
+    saveState: 'saved',
     step: 'design',
     project: newProject(),
     selection: [],

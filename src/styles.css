@@ -1006,3 +1006,11 @@ input.project-name {
   font-size: 11px;
   color: var(--muted);
 }
+
+.save-status:not(.save-failed):empty {
+  display: none;
+}
+
+.save-failed {
+  color: #c92a2a;
+}

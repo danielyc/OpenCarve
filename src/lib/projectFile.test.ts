@@ -50,3 +50,30 @@ test('fills defaults for missing optional fields and validates cuts', () => {
   expect(p.machine.maxRpm).toBeGreaterThan(0)
   expect(p.shapes[0]).toMatchObject({ name: 'rect', rotation: 0, cut: { type: 'pocket', depth: 6, tabs: true, tabCount: 4 } })
 })
+
+test('rejects unknown bits and invalid cut settings', () => {
+  expect(() => parseProject(file({ ...sample(), bits: { rough: 'laser' } }))).toThrow(/unknown bit laser/)
+  expect(() => parseProject(file({ ...sample(), bits: { rough: '1/8-endmill', detail: 'nope' } }))).toThrow(/unknown bit nope/)
+  const rough = newProject().cutSettings.rough
+  for (const key of ['feed', 'plunge', 'stepdown', 'rpm']) {
+    expect(() => parseProject(file({ ...sample(), cutSettings: { rough: { ...rough, [key]: 0 } } }))).toThrow(new RegExp(`${key} must be > 0`))
+  }
+  expect(() => parseProject(file({ ...sample(), cutSettings: { rough: { ...rough, safeZ: 0.2 } } }))).toThrow(/safeZ/)
+})
+
+test('maps unknown material and font ids to defaults with warnings', () => {
+  const warnings: string[] = []
+  const text = { id: 't', type: 'text', x: 0, y: 0, text: 'A', font: 'comic', size: 10, w: 5, h: 7 }
+  const p = parseProject(file({ ...sample(), materialId: 'unobtainium', shapes: [text, { ...text, id: 'u' }] }), warnings)
+  expect(p.materialId).toBe('mdf')
+  expect(p.shapes.map((s) => s.type === 'text' && s.font)).toEqual(['roboto', 'roboto'])
+  expect(warnings).toEqual([expect.stringMatching(/unobtainium/), expect.stringMatching(/comic/)])
+})
+
+test('clamps polygon sides and renames duplicate shape ids', () => {
+  const poly = { id: 'p', type: 'polygon', x: 0, y: 0, w: 5, h: 5 }
+  const p = parseProject(file({ ...sample(), shapes: [{ ...poly, sides: 1 }, { ...poly, sides: 500 }] }))
+  expect(p.shapes.map((s) => s.type === 'polygon' && s.sides)).toEqual([3, 64])
+  expect(p.shapes[0].id).toBe('p')
+  expect(p.shapes[1].id).not.toBe('p')
+})

@@ -17,6 +17,8 @@ const INDEX = 'opencarve:index'
 const LAST_OPEN = 'opencarve:lastOpen'
 const key = (id: string) => `opencarve:project:${id}`
 const AUTOSAVE_MS = 1000
+const RETRY_MS = 5000
+const MAX_RETRY_MS = 60_000
 
 export const listProjects = async () => ((await get<ProjectEntry[]>(INDEX)) ?? []).sort((a, b) => b.updatedAt - a.updatedAt)
 
@@ -47,27 +49,48 @@ export async function duplicateProject(id: string) {
 let saved: Project | null = null
 let timer: ReturnType<typeof setTimeout> | undefined
 let writing: Promise<void> = Promise.resolve()
+let retryMs = RETRY_MS
 
-function write(p: Project) {
+const committed = () => {
+  const s = useAppStore.getState()
+  return s.transientBase ?? s.project
+}
+
+// A failed write shows "Not saved" and retries with backoff; the retry writes the latest state of that project.
+// ponytail: one pending save/retry slot; switching projects twice while a write keeps failing can drop the older retry.
+function write(p: Project): Promise<void> {
   clearTimeout(timer)
   timer = undefined
   saved = p
   writing = writing
     .then(() => saveProject(p))
-    .catch((e) => {
-      saved = null // retried on the next change
-      useAppStore.setState({ status: `Could not save: ${(e as Error).message}` })
-    })
+    .then(
+      () => {
+        retryMs = RETRY_MS
+        if (!timer) useAppStore.setState({ saveState: 'saved' })
+      },
+      (e) => {
+        console.error('Save failed', e)
+        if (saved === p) saved = null
+        useAppStore.setState({ saveState: 'failed' })
+        clearTimeout(timer)
+        timer = setTimeout(() => void write(committed().id === p.id ? committed() : p), retryMs)
+        retryMs = Math.min(retryMs * 2, MAX_RETRY_MS)
+      },
+    )
+  return writing
 }
 
 export function flush(): Promise<void> {
-  clearTimeout(timer)
-  timer = undefined
   const s = useAppStore.getState()
-  const p = s.transientBase ?? s.project
-  if (s.screen === 'editor' && p !== saved) write(p)
+  const p = committed()
+  if (s.screen === 'editor' && p !== saved) return write(p)
+  if (s.saveState !== 'failed') {
+    clearTimeout(timer)
+    timer = undefined
+  }
   return writing.then(() => {
-    if (!timer) useAppStore.setState({ saving: false })
+    if (!timer) useAppStore.setState({ saveState: 'saved' })
   })
 }
 
@@ -76,7 +99,6 @@ export function startAutosave() {
     if (s.project.id !== prev.project.id || s.screen !== prev.screen) {
       if (timer) write(prev.transientBase ?? prev.project) // don't lose a pending save when switching away
       saved = s.project
-      useAppStore.setState({ saving: false })
       set(LAST_OPEN, s.screen === 'editor' ? s.project.id : null).catch(console.error)
       return
     }
@@ -84,7 +106,7 @@ export function startAutosave() {
     if (s.screen !== 'editor' || s.transientBase || s.project === saved) return
     clearTimeout(timer)
     timer = setTimeout(flush, AUTOSAVE_MS)
-    if (!s.saving) useAppStore.setState({ saving: true })
+    if (s.saveState === 'saved') useAppStore.setState({ saveState: 'saving' })
   })
   // Best effort: a pending save gets written when the tab is hidden or closed.
   document.addEventListener('visibilitychange', () => document.hidden && void flush())
@@ -110,9 +132,12 @@ export async function goHome() {
 export async function openFile(file: File | undefined) {
   if (!file) return
   try {
-    const p = { ...parseProject(await file.text()), id: newId() }
+    const warnings: string[] = []
+    const p = { ...parseProject(await file.text(), warnings), id: newId() }
     useAppStore.getState().loadProject(p)
     await saveProject(p)
+    // Same pattern as SVG import: the canvas status line is cleared by font loads, so notes go in a dialog.
+    if (warnings.length) alert(`Opened ${file.name} with changes:\n${warnings.join('\n')}`)
   } catch (e) {
     alert(`Could not open ${file.name}: ${(e as Error).message}`)
   }

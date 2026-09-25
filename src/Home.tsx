@@ -64,15 +64,15 @@ export default function Home() {
                   {size(p)} · Updated {new Date(p.updatedAt).toLocaleString()}
                 </span>
               </div>
-              <button className="primary" onClick={() => void open(p.id)} aria-label={`Open ${p.name}`}>
+              <button className="primary" onClick={() => void open(p.id)} aria-label={`Open ${p.name || 'Untitled'}`}>
                 Open
               </button>
-              <button onClick={() => void duplicateProject(p.id).then(refresh)} aria-label={`Duplicate ${p.name}`}>
+              <button onClick={() => void duplicateProject(p.id).then(refresh)} aria-label={`Duplicate ${p.name || 'Untitled'}`}>
                 Duplicate
               </button>
               <button
-                onClick={() => window.confirm(`Delete “${p.name}”? This can't be undone.`) && void deleteProject(p.id).then(refresh)}
-                aria-label={`Delete ${p.name}`}
+                onClick={() => window.confirm(`Delete “${p.name || 'Untitled'}”? This can't be undone.`) && void deleteProject(p.id).then(refresh)}
+                aria-label={`Delete ${p.name || 'Untitled'}`}
               >
                 Delete
               </button>
