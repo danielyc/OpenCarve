@@ -162,6 +162,39 @@ test('custom settings are dropped when that role gets a different bit', () => {
   expect(store().project.cutSettings.rough.stepdown).toBeLessThan(1)
 })
 
+test('bit overrides drive recommendations until settings are custom, and reset with the bit', () => {
+  const p = () => store().project
+  store().setBitOverride('rough', { diameter: 6 })
+  expect(p().bitOverrides).toEqual({ rough: { diameter: 6 } })
+  expect(p().cutSettings.rough).toMatchObject({ stepdown: 3, feed: 2250 })
+  store().setBitOverride('rough', { diameter: 0 }) // invalid: ignored
+  store().setBitOverride('rough', { angle: 60 }) // not a V-bit: ignored
+  expect(p().bitOverrides).toEqual({ rough: { diameter: 6 } })
+  store().setBitOverride('rough', { diameter: 3.175 }) // back to the library value
+  expect(p().bitOverrides).toEqual({})
+  expect(p().cutSettings.rough.stepdown).toBe(1.6)
+
+  store().setCutSettings('rough', { feed: 900 })
+  store().setBitOverride('rough', { diameter: 6 })
+  expect(p().cutSettings.rough).toMatchObject({ feed: 900, stepdown: 1.6 })
+  store().resetCutSettings('rough')
+  expect(p().cutSettings.rough.stepdown).toBe(3)
+
+  store().setBits({ rough: '1/8-endmill', detail: '90-vbit' })
+  store().setBitOverride('detail', { flat: 0.5 })
+  expect(p().cutSettings.detail?.stepdown).toBe(1)
+  store().setBitOverride('rough', { diameter: 3.17 }) // within display rounding of 3.175: not custom
+  expect(p().bitOverrides).toEqual({ detail: { flat: 0.5 } })
+  store().setBits({ rough: '1/4-endmill', detail: '90-vbit' })
+  expect(p().bitOverrides).toEqual({ detail: { flat: 0.5 } })
+  expect(p().cutSettings.rough.stepdown).toBe(3.2)
+  store().setBitOverride('detail', null)
+  expect(p().bitOverrides).toEqual({})
+  store().setBitOverride('detail', { angle: 60 })
+  store().setBits({ rough: '1/4-endmill' })
+  expect(p().bitOverrides).toEqual({})
+})
+
 test('loadProject replaces the project and clears history and selection', () => {
   store().addShape(rect('a', 10, 10))
   store().undo()

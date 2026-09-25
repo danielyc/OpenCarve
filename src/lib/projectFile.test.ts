@@ -9,6 +9,7 @@ const sample = (): Project => ({
   bits: { rough: '1/8-endmill', detail: '90-vbit' },
   cutSettings: { ...newProject().cutSettings, detail: { ...newProject().cutSettings.rough, feed: 900 } },
   cutSettingsCustom: { rough: false, detail: true },
+  bitOverrides: { rough: { diameter: 3 }, detail: { angle: 60, flat: 0.5 } },
   shapes: [
     { id: 'a', type: 'rect', name: 'Rect', x: 10, y: 20, rotation: 15, w: 30, h: 40, cut: defaultCut(12) },
     { id: 'b', type: 'text', name: 'Text', x: 50, y: 50, rotation: 0, text: 'Hi\nthere', font: 'lora', size: 20, w: 18, h: 14, letterSpacing: -1.5, lineHeight: 0.9, align: 'right', arc: -120, mirror: true },
@@ -47,6 +48,7 @@ test('fills defaults for missing optional fields and validates cuts', () => {
   expect(p.units).toBe('mm')
   expect(p.cutSettings.rough.feed).toBeGreaterThan(0)
   expect(p.cutSettingsCustom).toEqual({ rough: false, detail: false })
+  expect(p.bitOverrides).toEqual({})
   expect(p.machine.maxRpm).toBeGreaterThan(0)
   expect(p.shapes[0]).toMatchObject({ name: 'rect', rotation: 0, cut: { type: 'pocket', depth: 6, tabs: true, tabCount: 4 } })
 })
@@ -100,4 +102,29 @@ test('a text with a broken bounds cache (NaN saved as null) still opens, with an
   const p = parseProject(file({ ...sample(), shapes: [text] }))
   expect(p.shapes[0]).toMatchObject({ w: 12, h: 10, arc: 1e-320 })
   expect(parseProject(serializeProject(p))).toEqual(p)
+})
+
+test('validates bit overrides, dropping bad ones with a warning', () => {
+  const warnings: string[] = []
+  const p = parseProject(
+    file({
+      ...sample(),
+      bits: { rough: '1/8-endmill' },
+      cutSettings: undefined,
+      cutSettingsCustom: undefined,
+      bitOverrides: { rough: { diameter: 6, bogus: 1 }, detail: { diameter: 2 }, laser: { diameter: 1 } },
+    }),
+    warnings,
+  )
+  expect(p.bitOverrides).toEqual({ rough: { diameter: 6 } })
+  expect(p.cutSettings.rough.stepdown).toBe(3) // recommended from the effective bit
+  expect(warnings).toEqual(['Ignored the detail bit override: no detail bit.', 'Ignored the laser bit override: no laser bit.'])
+  for (const bad of [{ diameter: 'x' }, { diameter: 60 }, { angle: 5 }, { flat: 20 }, { flat: null }, 3]) {
+    const w: string[] = []
+    expect(parseProject(file({ ...sample(), bitOverrides: { detail: bad } }), w).bitOverrides).toEqual({})
+    expect(w).toHaveLength(1)
+  }
+  expect(() => parseProject(file({ ...sample(), bitOverrides: [] }))).toThrow(/bitOverrides must be an object/)
+  // Values equal to the library bit (within display rounding) aren't overrides.
+  expect(parseProject(file({ ...sample(), bitOverrides: { rough: { diameter: 3.17 }, detail: { angle: 90, flat: 1 } } })).bitOverrides).toEqual({ detail: { flat: 1 } })
 })

@@ -79,6 +79,8 @@ export interface Bit {
   flat?: number // tip flat diameter in mm, vbit only
 }
 
+export type BitOverride = Partial<Pick<Bit, 'diameter' | 'angle' | 'flat'>>
+
 export interface Material {
   id: string
   name: string
@@ -127,6 +129,7 @@ export interface Project {
   bits: { rough: string; detail?: string }
   cutSettings: { rough: CutSettings; detail?: CutSettings } // detail present iff bits.detail
   cutSettingsCustom: Record<BitRole, boolean> // false = follow recommendedSettings
+  bitOverrides?: Partial<Record<BitRole, BitOverride>> // only fields that differ from the library bit; see effectiveBit
   machine: { name: string; w: number; h: number; maxRpm: number }
   shapes: Shape[]
 }
@@ -172,6 +175,7 @@ export const newProject = (): Project => ({
   bits: { rough: '1/8-endmill' },
   cutSettings: { rough: recommendedSettings(findMaterial('mdf'), findBit('1/8-endmill'), MACHINES[0].maxRpm) },
   cutSettingsCustom: { rough: false, detail: false },
+  bitOverrides: {},
   machine: MACHINES[0],
   shapes: [],
 })

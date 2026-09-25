@@ -15,7 +15,7 @@ import {
   type PolyPathD,
 } from 'clipper2-ts'
 import { polylineBounds, shapeToPolylines, tabPositions } from '../lib/geometry'
-import { findBit } from '../lib/library'
+import { effectiveBit } from '../lib/library'
 import { formatLength } from '../lib/units'
 import { MAX_STEPOVER, tabsActive, type BitRole, type Cut, type CutSettings, type Point, type Project, type Shape } from '../model'
 import { opTimes } from './gcode'
@@ -315,14 +315,15 @@ function nearestOrder(open: Pt3[][], loops: Pt3[][], from: Pt3 | null): Pt3[][] 
   return out
 }
 
-// V-bit with tan(half angle) k. Pass i cuts the medial axis where its depth c/k falls in (z_{i-1}, z_i], and the
-// contour of the region shrunk by |z_i|·k at z_i; the last contour outlines the flat floor at dmax.
-function vcarveSegments(region: PathsD, chains: MedialPoint[][], k: number, dmax: number, s: CutSettings) {
+// V-bit with tan(half angle) k and tip flat radius f: at depth |z| it reaches f + |z|·k sideways. Pass i cuts the
+// medial axis where its depth (c − f)/k falls in (z_{i-1}, z_i], and the contour of the region shrunk by f + |z_i|·k
+// at z_i; the last contour outlines the flat floor at dmax. Medial parts narrower than the flat (c < f) are skipped.
+function vcarveSegments(region: PathsD, chains: MedialPoint[][], k: number, f: number, dmax: number, s: CutSettings) {
   const L = linker(s.safeZ)
   zLevels(dmax, s.stepdown).forEach((z, i, zs) => {
-    const hi = -z * k
-    const lo = i ? -zs[i - 1] * k : -1
-    const open = chains.flatMap((c) => clipBand(c, lo, hi)).map((c) => c.map(([x, y, cl]): Pt3 => [x, y, -cl / k]))
+    const hi = f - z * k
+    const lo = i ? f - zs[i - 1] * k : f || -1
+    const open = chains.flatMap((c) => clipBand(c, lo, hi)).map((c) => c.map(([x, y, cl]): Pt3 => [x, y, -Math.max(0, cl - f) / k]))
     const loops = inflate(region, -hi).map((p) => closedPts(orient(p, areaD(p) < 0, s.direction)).map((q): Pt3 => [...q, z]))
     for (const path of nearestOrder(open, loops, L.cur)) {
       const c = L.cur
@@ -332,6 +333,11 @@ function vcarveSegments(region: PathsD, chains: MedialPoint[][], k: number, dmax
   })
   return L.finish()
 }
+
+// Every corner's medial branch dips below the flat within f/sin(θ/2) of the corner; a longer stretch is a real
+// feature narrower than the flat. ponytail: length heuristic, misses narrow features shorter than 4·f.
+const narrowerThanFlat = (chains: MedialPoint[][], f: number) =>
+  f > 0 && chains.some((c) => clipBand(c, -1, f).some((piece) => piece.reduce((a, q, i) => a + (i ? Math.hypot(q[0] - piece[i - 1][0], q[1] - piece[i - 1][1]) : 0), 0) > 4 * f))
 
 export function planProject(project: Project): CamResult {
   const { stock, bits, cutSettings, machine } = project
@@ -346,11 +352,12 @@ export function planProject(project: Project): CamResult {
   }
   const carved = project.shapes.filter((s) => s.cut)
   const rs = cutSettings.rough
-  const r = findBit(bits.rough).diameter / 2
-  const detailBit = bits.detail ? findBit(bits.detail) : null
+  const roughBit = effectiveBit(project, 'rough')
+  const r = roughBit.diameter / 2
+  const detailBit = bits.detail ? effectiveBit(project, 'detail') : null
   const ds = cutSettings.detail
   const usableDetail = detailBit && ds && detailBit.type !== 'vbit' && detailBit.diameter < 2 * r
-  const vRole: BitRole | null = detailBit?.type === 'vbit' ? 'detail' : findBit(bits.rough).type === 'vbit' ? 'rough' : null
+  const vRole: BitRole | null = detailBit?.type === 'vbit' ? 'detail' : roughBit.type === 'vbit' ? 'rough' : null
 
   for (const shape of carved) {
     const cut = shape.cut!
@@ -374,15 +381,22 @@ export function planProject(project: Project): CamResult {
 
     if (cut.type === 'vcarve') {
       const vs = cutSettings[vRole!]!
-      const k = Math.tan((findBit(bits[vRole!]!).angle! * Math.PI) / 360)
-      const dmax = Math.min(cut.depth, t - 0.5) // never through
+      const vBit = effectiveBit(project, vRole!)
+      const k = Math.tan((vBit.angle! * Math.PI) / 360)
+      const f = (vBit.flat ?? 0) / 2 // Bit.flat is a diameter
+      const coneDepth = (vBit.diameter / 2 - f) / k // deeper, the shank's straight side would cut the walls
+      const dmax = Math.min(cut.depth, t - 0.5, coneDepth) // never through
+      if (coneDepth < Math.min(cut.depth, t - 0.5))
+        warnings.push(`${shape.name}: max depth limited to ${+formatLength(coneDepth, project.units)} ${project.units} by the V-bit's diameter`)
+      // The flat floor at dmax ends where the V-bit's wall meets it (inset dmax·k); the V-bit's centre stays a further f in.
       const floor = inflate(region, -dmax * k)
       if (floor.length) {
         // Flat floor: the other bit if it's a flat-ish cutter that fits, then the V-bit over what it can't reach
-        // (corners, necks). V-bit rings are 0.4·tan(α/2) apart: ridges of about 0.2 mm, up to ~0.35 mm at corners.
-        const vRings = (area: PathsD) => pocketSegments(area, 2 * 0.2 * k, { ...vs, stepover: MAX_STEPOVER }, dmax)
+        // (corners, necks). V-bit rings (radius f + 0.4·tan(α/2), stepover ½): for a sharp tip, ridges of about 0.2 mm,
+        // up to ~0.35 mm at corners; a flat tip only makes them lower.
+        const vRings = (area: PathsD) => pocketSegments(area, f + 2 * 0.2 * k, { ...vs, stepover: MAX_STEPOVER }, dmax)
         const oRole: BitRole = vRole === 'rough' ? 'detail' : 'rough'
-        const oBit = bits[oRole] ? findBit(bits[oRole]!) : null
+        const oBit = bits[oRole] ? effectiveBit(project, oRole) : null
         const or = oBit && oBit.type !== 'vbit' && cutSettings[oRole] ? oBit.diameter / 2 : 0
         if (or && inflate(floor, -or).length) {
           push(ops, oRole, 'vcarve-clear', pocketSegments(floor, or, cutSettings[oRole]!, dmax))
@@ -395,7 +409,8 @@ export function planProject(project: Project): CamResult {
       }
       const { chains, spacing } = medialAxis(region)
       if (spacing > SPACING) warnings.push(`${shape.name} is very large; its V-carve is less detailed`)
-      push(ops, vRole!, 'vcarve', vcarveSegments(region, chains, k, dmax, vs))
+      if (narrowerThanFlat(chains, f)) warnings.push(`Some details of ${shape.name} are narrower than the V-bit's flat tip`)
+      push(ops, vRole!, 'vcarve', vcarveSegments(region, chains, k, f, dmax, vs))
       continue
     }
 

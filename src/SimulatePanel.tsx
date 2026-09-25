@@ -1,6 +1,6 @@
 import { opKey, type Op } from './cam/toolpath'
 import { icons } from './icons'
-import { findBit, findMaterial } from './lib/library'
+import { effectiveBit, findMaterial } from './lib/library'
 import { formatLength } from './lib/units'
 import type { BitRole, Cut } from './model'
 import { useAppStore } from './store'
@@ -17,14 +17,15 @@ const KIND_LABEL: Record<Exclude<Op['kind'], 'outline'>, string> = {
 
 // Job summary shared by the Simulate and Export panels.
 export function Summary() {
-  const { materialId, stock, bits, units } = useAppStore((s) => s.project)
+  const project = useAppStore((s) => s.project)
+  const { materialId, stock, bits, units } = project
   const cam = useAppStore((s) => s.cam)
   const busy = useAppStore((s) => s.camBusy)
   const len = (mm: number) => formatLength(mm, units)
   const rows: [string, string][] = [
     ['Material', findMaterial(materialId).name],
     ['Stock', `${len(stock.w)} × ${len(stock.h)} × ${len(stock.thickness)} ${units}`],
-    ...(['rough', 'detail'] as const).flatMap((role): [string, string][] => (bits[role] ? [[`${ROLE_LABEL[role]} bit`, findBit(bits[role]).name]] : [])),
+    ...(['rough', 'detail'] as const).flatMap((role): [string, string][] => (bits[role] ? [[`${ROLE_LABEL[role]} bit`, effectiveBit(project, role).name]] : [])),
     ['Time', busy || !cam ? 'Calculating…' : `about ${mmss(cam.timeSec.rough + cam.timeSec.detail)}`],
   ]
   return (
