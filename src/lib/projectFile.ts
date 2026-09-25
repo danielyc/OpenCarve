@@ -1,4 +1,4 @@
-import { defaultCut, MAX_STEPOVER, newId, newProject, validCut, type BitOverride, type BitRole, type Cut, type CutSettings, type Point, type Polyline, type Project, type Shape } from '../model'
+import { defaultCut, fitOrigin, MAX_STEPOVER, newId, newProject, validCut, type BitOverride, type BitRole, type Cut, type CutSettings, type Origin, type Point, type Polyline, type Project, type Shape } from '../model'
 import { FONTS, fontFamily, MAX_FONT_BYTES, type StoredFont } from './fonts'
 import { BITS, differingFields, effectiveBit, findBit, findMaterial, MATERIALS, overrideError, recommendedSettings } from './library'
 
@@ -186,6 +186,21 @@ function overrides(v: unknown, bits: Project['bits'], warnings: string[]): NonNu
   return out
 }
 
+// Presets follow the stock; a custom zero outside the stock is pulled back onto it with a warning.
+function origin(v: unknown, stock: Project['stock'], d: Origin, warnings: string[]): Origin {
+  if (v === undefined) return d
+  const o = obj(v, 'origin')
+  const raw: Origin = {
+    preset: oneOf(o, 'preset', 'origin', ['bottom-left', 'bottom-right', 'top-left', 'top-right', 'center', 'custom'] as const, d.preset),
+    x: num(o, 'x', 'origin', d.x),
+    y: num(o, 'y', 'origin', d.y),
+    z: oneOf(o, 'z', 'origin', ['top', 'bottom'] as const, d.z),
+  }
+  const fit = fitOrigin(raw, stock)
+  if (raw.preset === 'custom' && (fit.x !== raw.x || fit.y !== raw.y)) warnings.push(`Work zero was outside the stock; moved to (${fit.x}, ${fit.y}) mm.`)
+  return fit
+}
+
 // Recoverable problems (unknown material or font) fall back to defaults and are reported through `warnings`.
 export function parseProject(text: string, warnings: string[] = []): Project {
   return projectFromData(parseJson(text), warnings)
@@ -281,6 +296,7 @@ function projectFromData(data: unknown, warnings: string[]): Project {
     },
     bitOverrides,
     machine,
+    origin: origin(p.origin, stock, d.origin, warnings),
     shapes,
   }
 }

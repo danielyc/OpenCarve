@@ -363,7 +363,8 @@ export default function Canvas() {
   const preview =
     drag?.kind === 'create' && tool !== 'select' && tool !== 'pen' && tool !== 'text' ? makeShape(tool, drag.start, drag.current, drag.shift, 3 / zoom) : null
   const penPreview = pen.length && cursor ? [...pen, cursor] : pen
-  const origin = toScreen([0, 0])
+  const corner = toScreen([0, 0])
+  const zero = toScreen([project.origin.x, project.origin.y])
 
   let overlay = null
   if (frame) {
@@ -474,9 +475,11 @@ export default function Canvas() {
           {preview && <path className="preview" d={pathD(shapeToPolylines(preview))} />}
           {penPreview.length > 1 && <path className="preview" fill="none" d={pathD([{ points: penPreview, closed: false }])} />}
         </g>
+        <path className="corner-tick" d={`M${corner[0]} ${corner[1]}h8M${corner[0]} ${corner[1]}v-8`} />
         <g className="origin">
-          <path className="axis-x" d={`M${origin[0]} ${origin[1]}h24`} />
-          <path className="axis-y" d={`M${origin[0]} ${origin[1]}v-24`} />
+          <path className="axis-x" d={`M${zero[0]} ${zero[1]}h24`} />
+          <path className="axis-y" d={`M${zero[0]} ${zero[1]}v-24`} />
+          <circle cx={zero[0]} cy={zero[1]} r={3} />
         </g>
         {pen.length > 0 && <circle className="pen-start" cx={toScreen(pen[0])[0]} cy={toScreen(pen[0])[1]} r={CLOSE_PX / 2} />}
         {drag?.kind === 'marquee' && (
@@ -485,7 +488,7 @@ export default function Canvas() {
         {overlay}
       </svg>
       <div className="canvas-status" aria-live="off">
-        {cursor ? `X ${formatLength(cursor[0], units)}  Y ${formatLength(cursor[1], units)} ${units}` : ' '}
+        {cursor ? `X ${formatLength(cursor[0] - project.origin.x, units)}  Y ${formatLength(cursor[1] - project.origin.y, units)} ${units}` : ' '}
         {status && (
           <span className="status-error" role="alert">
             {status}

@@ -44,6 +44,9 @@ v1.1 steps 11–14 are done too.
 13. Text controls: letter spacing, multi-line with line height and alignment, bend, mirror.
 14. Fonts: 16 bundled OFL fonts, uploaded TTF/OTF (stored in the browser and embedded in project files), Google Fonts via Fontsource.
 
+v1.2 step 15 is done.
+15. Work zero: XY zero at a stock corner, the centre or a custom offset, Z zero at the stock top or bottom; shown on the canvas, cursor readout, inspector X/Y and 3D preview (axis gizmo), applied to the G-code and stated in its header, the summary and the Export setup note. Presets follow stock resizes; a custom zero is clamped to the stock.
+
 ### Known limitations
 - Text has no ligatures or complex-script shaping.
 - SVG import ignores `<use>`, `<text>` and CSS styling.

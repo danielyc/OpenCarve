@@ -90,6 +90,40 @@ test('designs, simulates, exports and reopens a two-bit sign', async ({ page }) 
   await expect(page.locator('[data-id]')).toHaveCount(2)
 })
 
+test('work zero at the centre shifts the readout, inspector and G-code', async ({ page }) => {
+  test.setTimeout(60_000)
+  await page.goto('/')
+  await page.getByRole('button', { name: 'New project' }).click()
+  await page.getByRole('radio', { name: 'Centre' }).check()
+  await expect(page.getByLabel('Zero X (from left)')).toHaveValue('150.00')
+  await expect(page.getByLabel('Zero Y (from bottom)')).toHaveValue('100.00')
+
+  const box = (await page.getByLabel('Design canvas').boundingBox())!
+  const [cx, cy] = [box.x + box.width / 2, box.y + box.height / 2]
+  await page.mouse.move(cx, cy) // the view is fitted, so the canvas centre is the stock centre
+  await expect(page.locator('.canvas-status')).toHaveText(/^X -?0\.\d\d {2}Y -?0\.\d\d mm/)
+
+  await page.getByRole('button', { name: 'Rectangle' }).click()
+  await page.mouse.move(cx - 150, cy - 30)
+  await page.mouse.down()
+  await page.mouse.move(cx - 50, cy + 30, { steps: 4 })
+  await page.mouse.up()
+  expect(parseFloat(await page.getByLabel('X', { exact: true }).inputValue())).toBeLessThan(0)
+  const y = page.getByLabel('Y', { exact: true })
+  await y.fill('0')
+  await y.press('Enter')
+  await expect(y).toHaveValue('0.00')
+
+  await page.getByRole('button', { name: 'Export', exact: true }).click()
+  await expect(page.getByText('Set XY zero at the centre of the stock and Z zero at the top of the stock.')).toBeVisible()
+  const button = page.getByRole('button', { name: 'Download rough G-code' })
+  await expect(button).toBeEnabled()
+  const g = await text((await Promise.all([page.waitForEvent('download'), button.click()]))[0])
+  expect(g).toContain('; XY zero: centre of stock')
+  expect(g).toMatch(/^G[01] .*X-\d/m)
+  expect(g).toMatch(/^G[01] .*Y-\d/m) // centred on Y = 0, so half the moves are below it
+})
+
 // In this file so it runs after the flow test rather than alongside it: headless WebGL is software-rendered, and every
 // animation frame redraws the 1.2 M-cell surface, which starves tests running in parallel.
 test('plays and scrubs the toolpath animation', async ({ page }) => {

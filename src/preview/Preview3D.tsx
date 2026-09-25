@@ -158,6 +158,7 @@ export default function Preview3D() {
   const busy = useAppStore((s) => s.simBusy)
   const cam = useAppStore((s) => s.cam)
   const stock = useAppStore((s) => s.project.stock)
+  const origin = useAppStore((s) => s.project.origin)
   const step = useAppStore((s) => s.step)
   const settings = useAppStore((s) => s.project.cutSettings)
   const bits = useAppStore((s) => s.project.bits)
@@ -293,6 +294,21 @@ export default function Preview3D() {
     frame(view)
     view.render()
   }, [ready, stock])
+
+  // Work-zero gizmo (X red, Y green, Z blue). Scene axes: x = stock X, y = up, -z = stock Y; drawn over the stock.
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view) return
+    const axes = new view.T.AxesHelper(15)
+    const material = axes.material as THREE.Material
+    material.depthTest = false
+    axes.rotation.x = -Math.PI / 2
+    axes.position.set(origin.x, origin.z === 'bottom' ? -stock.thickness : 0, -origin.y)
+    axes.renderOrder = 10
+    replace(view, 'zero', axes)
+    view.render()
+    return () => material.dispose()
+  }, [ready, stock, origin])
 
   useEffect(() => {
     const view = viewRef.current

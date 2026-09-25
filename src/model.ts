@@ -56,7 +56,8 @@ export interface TextShape extends ShapeBase {
   mirror?: boolean // horizontal flip, default false
 }
 
-// Coordinates: XY origin is the stock's bottom-left corner, Y up; Z zero is the top of the stock there, Z down negative.
+// Coordinates: shapes and toolpaths live in stock coordinates — XY from the stock's bottom-left corner, Y up; Z zero is
+// the top of the stock, Z down negative. The work zero (Project.origin) only shifts what is displayed and emitted in G-code.
 
 // Multi-subpath import (e.g. an SVG path with holes); points are relative to x, y.
 export interface CompoundShape extends ShapeBase {
@@ -118,6 +119,29 @@ export interface Cut {
   tabHeight: number
 }
 
+export type OriginPreset = 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right' | 'center'
+// x/y: the zero's position in stock coordinates. z: whether Z zero is the stock top or its bottom (the spoilboard).
+export interface Origin {
+  preset: OriginPreset | 'custom'
+  x: number
+  y: number
+  z: 'top' | 'bottom'
+}
+
+export function originXY(stock: { w: number; h: number }, preset: OriginPreset): [number, number] {
+  if (preset === 'center') return [stock.w / 2, stock.h / 2]
+  return [preset.endsWith('right') ? stock.w : 0, preset.startsWith('top') ? stock.h : 0]
+}
+
+// Keeps a preset zero on its corner/centre and a custom one inside the stock.
+export function fitOrigin(o: Origin, stock: { w: number; h: number }): Origin {
+  if (o.preset !== 'custom') {
+    const [x, y] = originXY(stock, o.preset)
+    return { ...o, x, y }
+  }
+  return { ...o, x: clamp(o.x, 0, stock.w), y: clamp(o.y, 0, stock.h) }
+}
+
 export interface Project {
   id: string
   name: string
@@ -131,6 +155,7 @@ export interface Project {
   cutSettingsCustom: Record<BitRole, boolean> // false = follow recommendedSettings
   bitOverrides?: Partial<Record<BitRole, BitOverride>> // only fields that differ from the library bit; see effectiveBit
   machine: { name: string; w: number; h: number; maxRpm: number }
+  origin: Origin
   shapes: Shape[]
 }
 
@@ -177,5 +202,6 @@ export const newProject = (): Project => ({
   cutSettingsCustom: { rough: false, detail: false },
   bitOverrides: {},
   machine: MACHINES[0],
+  origin: { preset: 'bottom-left', x: 0, y: 0, z: 'top' },
   shapes: [],
 })

@@ -26,6 +26,22 @@ test('round-trips a project', () => {
   expect(parseProject(serializeProject(p))).toEqual(p)
 })
 
+test('work zero: round-trips, defaults for old files, validates and clamps', () => {
+  const p = { ...sample(), origin: { preset: 'custom' as const, x: 12.5, y: 40, z: 'bottom' as const } }
+  expect(parseProject(serializeProject(p))).toEqual(p)
+  const old: Partial<Project> = sample()
+  delete old.origin
+  expect(parseProject(file(old)).origin).toEqual({ preset: 'bottom-left', x: 0, y: 0, z: 'top' })
+  // Presets are re-derived from the stock.
+  expect(parseProject(file({ ...old, origin: { preset: 'center', x: 1, y: 2, z: 'top' } })).origin).toMatchObject({ x: 150, y: 100 })
+  const warnings: string[] = []
+  expect(parseProject(file({ ...old, origin: { preset: 'custom', x: -5, y: 900, z: 'top' } }), warnings).origin).toMatchObject({ x: 0, y: 200 })
+  expect(warnings).toEqual(['Work zero was outside the stock; moved to (0, 200) mm.'])
+  expect(() => parseProject(file({ ...old, origin: { preset: 'middle' } }))).toThrow(/origin.preset/)
+  expect(() => parseProject(file({ ...old, origin: { preset: 'custom', x: 'a' } }))).toThrow(/origin.x/)
+  expect(() => parseProject(file({ ...old, origin: { z: 'side' } }))).toThrow(/origin.z/)
+})
+
 test('rejects garbage', () => {
   expect(() => parseProject('not json')).toThrow(/not JSON/)
   expect(() => parseProject('{"format":"svg"}')).toThrow(/not an OpenCarve project/)

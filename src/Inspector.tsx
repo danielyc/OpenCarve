@@ -4,7 +4,7 @@ import { loadFont } from './lib/fonts'
 import { fitText, localBounds, scaleShape } from './lib/geometry'
 import { BITS, effectiveBit, findBit, findMaterial, MACHINES, MATERIALS, overrideError, vbitMaxDepth, vcarveBit } from './lib/library'
 import { formatLength, mmToIn, parseLength, type Units } from './lib/units'
-import { isOpen, MAX_STEPOVER, tabsActive, type BitOverride, type BitRole, type Cut, type Shape, type TextShape } from './model'
+import { isOpen, MAX_STEPOVER, tabsActive, type BitOverride, type OriginPreset, type BitRole, type Cut, type Shape, type TextShape } from './model'
 import { useAppStore } from './store'
 
 // `live` commits on every keystroke; the whole focus session is a single undo entry.
@@ -94,6 +94,63 @@ function Segmented<T extends string>(props: { label: string; value: string; opti
         </p>
       )}
     </>
+  )
+}
+
+// Grid cells (row, column) of a 3×3 layout; the icon marks the zero on a stock outline.
+const ZERO_PRESETS: { value: OriginPreset; label: string; cell: [number, number] }[] = [
+  { value: 'top-left', label: 'Top left', cell: [1, 1] },
+  { value: 'top-right', label: 'Top right', cell: [1, 3] },
+  { value: 'center', label: 'Centre', cell: [2, 2] },
+  { value: 'bottom-left', label: 'Bottom left', cell: [3, 1] },
+  { value: 'bottom-right', label: 'Bottom right', cell: [3, 3] },
+]
+
+function WorkZero() {
+  const origin = useAppStore((s) => s.project.origin)
+  const units = useAppStore((s) => s.project.units)
+  const st = useAppStore.getState
+  const name = useId()
+  const coord = (label: string, mm: number, key: 'x' | 'y') => (
+    <Field
+      label={label}
+      value={formatLength(mm, units)}
+      onCommit={(t) => {
+        const v = parseLength(t, units)
+        if (v !== null) st().setOrigin({ [key]: v })
+      }}
+    />
+  )
+  return (
+    <div className="work-zero">
+      <h3>Work zero</h3>
+      <div className="zero-grid" role="radiogroup" aria-label="XY zero">
+        {ZERO_PRESETS.map(({ value, label, cell: [r, c] }) => (
+          <label key={value} style={{ gridRow: r, gridColumn: c }} title={label}>
+            <input type="radio" name={name} checked={origin.preset === value} onChange={() => st().setOrigin({ preset: value })} />
+            <svg viewBox="0 0 20 14" width="20" height="14" aria-hidden="true">
+              <rect x="1" y="1" width="18" height="12" rx="1" />
+              <circle cx={1 + (c - 1) * 9} cy={1 + (r - 1) * 6} r="2.5" />
+            </svg>
+            {label}
+          </label>
+        ))}
+      </div>
+      <div className="fields">
+        {coord('Zero X (from left)', origin.x, 'x')}
+        {coord('Zero Y (from bottom)', origin.y, 'y')}
+      </div>
+      <Segmented
+        label="Z zero"
+        value={origin.z}
+        options={[
+          { value: 'top', label: 'Top of stock' },
+          { value: 'bottom', label: 'Bottom of stock' },
+        ]}
+        hint={origin.z === 'bottom' ? 'Z zero at the bottom: touch off on the spoilboard next to the stock.' : undefined}
+        onChange={(z) => st().setOrigin({ z })}
+      />
+    </div>
   )
 }
 
@@ -276,7 +333,7 @@ function BitOverrideFields({ role }: { role: BitRole }) {
 export default function Inspector() {
   const project = useAppStore((s) => s.project)
   const selection = useAppStore((s) => s.selection)
-  const { units } = project
+  const { units, origin } = project
   const selected = project.shapes.filter((s) => selection.includes(s.id))
   const st = useAppStore.getState
 
@@ -378,6 +435,7 @@ export default function Inspector() {
               </button>
             ))}
           </div>
+          <WorkZero />
         </Section>
         <Section title="Machine">
           <div className="fields">
@@ -449,8 +507,8 @@ export default function Inspector() {
       <h2>{selected.length > 1 ? `${selected.length} shapes` : 'Shape'}</h2>
       <div className="fields">
         <Field wide label="Name" value={shared((s) => s.name)} onCommit={(name) => update({ name })} />
-        {lengthField('X', (s) => s.x, (s, x) => ({ ...s, x }))}
-        {lengthField('Y', (s) => s.y, (s, y) => ({ ...s, y }))}
+        {lengthField('X', (s) => s.x - origin.x, (s, x) => ({ ...s, x: x + origin.x }))}
+        {lengthField('Y', (s) => s.y - origin.y, (s, y) => ({ ...s, y: y + origin.y }))}
         {lengthField('W', (s) => size(s)[0], (s, w) => scaleShape(s, size(s)[0] ? w / size(s)[0] : 1, 1), true)}
         {lengthField('H', (s) => size(s)[1], (s, h) => scaleShape(s, 1, size(s)[1] ? h / size(s)[1] : 1), true)}
         <Field

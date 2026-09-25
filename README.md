@@ -10,6 +10,7 @@ Free, open-source (AGPL-3.0) design and toolpath software for hobby CNC routers,
 - **Materials, bits and cut settings**: pick a material and bits; feed, plunge, stepdown and RPM are filled in with recommended values you can override.
 - **Bit overrides**: adjust a library bit's diameter, and a V-bit's angle and flat tip, to match the bit you actually have. Overrides are saved in the project, marked "Custom" and can be reset; recommended settings follow the adjusted bit.
 - **Machine presets**: Generic GRBL, 3018, Onefinity Woodworker, Shapeoko 4 XL/XXL, TwoTrees TTC450 (500 W), X-Carve 750/1000, or a custom work area and max RPM.
+- **Selectable work zero**: put XY zero at any stock corner, the centre, or a custom offset, and Z zero at the top of the stock or its bottom (the spoilboard). The canvas marker, cursor readout, shape positions, 3D preview and G-code all follow it.
 - **Cuts**: outline (outside, inside or on the path, with tabs), pocket and V-carve.
 - **Two-stage carves**: a rough bit cuts outlines and clears pockets. An optional detail bit only rest-machines what the rough bit can't reach in pockets and V-carve floors; a V-bit as the detail bit also cuts the V-carves.
 - **Simulate**: toolpaths on the 2D canvas, a 3D preview of the carved result, warnings and an estimated time.
@@ -28,7 +29,7 @@ Free, open-source (AGPL-3.0) design and toolpath software for hobby CNC routers,
 1. **Design**: set the stock size and material with nothing selected, choose your bits, draw or import shapes, and give each one a cut (outline, pocket or V-carve) and depth.
 2. **Simulate**: check the toolpaths, the 3D preview and any warnings.
 3. **Export**: download the G-code file for each bit.
-4. **On the machine**: set Z zero at the top of the stock and XY zero at the bottom-left corner. For a two-bit carve, run the rough bit first, then change to the detail bit. After changing bits, re-zero Z only; don't move X or Y.
+4. **On the machine**: set XY and Z zero where the project's work zero says (Stock section, with nothing selected; the default is XY at the bottom-left corner and Z at the top of the stock). The Export step and the G-code header repeat it. For a two-bit carve, run the rough bit first, then change to the detail bit. After changing bits, re-zero Z only; don't move X or Y.
 
 ## Safety
 

@@ -5,7 +5,7 @@ import { polylineBounds, shapeBounds, shapeToPolylines } from './lib/geometry'
 import { differingFields, effectiveBit, findBit, findMaterial, overrideError, recommendedSettings, vbitMaxDepth, vcarveBit } from './lib/library'
 import type { Units } from './lib/units'
 import type { SimResult } from './preview/sim'
-import { defaultCut, newId, newProject, validCut, type BitOverride, type BitRole, type Cut, type CutSettings, type Project, type Shape, type ShapePatch } from './model'
+import { defaultCut, fitOrigin, newId, newProject, validCut, type BitOverride, type BitRole, type Cut, type CutSettings, type Origin, type Project, type Shape, type ShapePatch } from './model'
 
 export type Step = 'design' | 'simulate' | 'export'
 export type Screen = 'home' | 'editor'
@@ -64,6 +64,7 @@ interface AppState {
   undo: () => void
   redo: () => void
   setStock: (patch: Partial<Project['stock']>) => void
+  setOrigin: (patch: Partial<Origin>) => void // a preset sets x/y; editing x or y makes it custom
   setMaterialId: (id: string) => void
   setBits: (bits: Project['bits']) => void
   setBitOverride: (role: BitRole, patch: BitOverride | null) => void // null resets to the library bit
@@ -237,7 +238,12 @@ export const useAppStore = create<AppState>()((set, get) => {
         const shapes = p.shapes.map((s) =>
           s.cut ? { ...s, cut: validCut(s, { ...s.cut, depth: s.cut.depth >= p.stock.thickness ? t : s.cut.depth }, t) } : s,
         )
-        return { ...p, stock, shapes }
+        return { ...p, stock, shapes, origin: fitOrigin(p.origin, stock) }
+      }),
+    setOrigin: (patch) =>
+      setProject((p) => {
+        const custom = patch.x !== undefined || patch.y !== undefined
+        return { ...p, origin: fitOrigin({ ...p.origin, ...patch, ...(custom && { preset: 'custom' as const }) }, p.stock) }
       }),
     setMaterialId: (materialId) => setProject((p) => recommended({ ...p, materialId })),
     setBits: (bits) =>

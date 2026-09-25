@@ -284,6 +284,17 @@ button:disabled {
   stroke-width: 2;
 }
 
+.origin circle {
+  fill: var(--text);
+}
+
+.corner-tick {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1;
+  opacity: 0.6;
+}
+
 .axis-x {
   stroke: #d63b3b;
 }
@@ -458,6 +469,69 @@ button:disabled {
 
 .field small {
   font-size: 11px;
+}
+
+.work-zero {
+  margin-top: 14px;
+}
+
+.work-zero h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.work-zero .fields {
+  margin-top: 8px;
+}
+
+.zero-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.zero-grid label {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 4px 2px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.zero-grid input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.zero-grid svg rect {
+  fill: none;
+  stroke: currentColor;
+}
+
+.zero-grid svg circle {
+  fill: currentColor;
+}
+
+.zero-grid label:has(:checked) {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+}
+
+.zero-grid label:has(:focus-visible) {
+  outline: 2px solid var(--accent);
 }
 
 .segmented label {

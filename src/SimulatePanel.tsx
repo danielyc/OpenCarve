@@ -1,3 +1,4 @@
+import { xyZeroLabel } from './cam/gcode'
 import { opKey, type Op } from './cam/toolpath'
 import { icons } from './icons'
 import { effectiveBit, findMaterial } from './lib/library'
@@ -27,6 +28,7 @@ export function Summary() {
     ['Material', findMaterial(materialId).name],
     ['Stock', `${len(stock.w)} × ${len(stock.h)} × ${len(stock.thickness)} ${units}`],
     ...(['rough', 'detail'] as const).flatMap((role): [string, string][] => (bits[role] ? [[`${ROLE_LABEL[role]} bit`, effectiveBit(project, role).name]] : [])),
+    ['Work zero', `${xyZeroLabel(project)}, Z at ${project.origin.z}`],
     ['Time', busy || !cam ? 'Calculating…' : `about ${mmss(cam.timeSec.rough + cam.timeSec.detail)}`],
   ]
   return (

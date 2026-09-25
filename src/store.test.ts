@@ -143,6 +143,27 @@ test('stock thickness changes clamp depths and keep through cuts through', () =>
   expect(store().project.stock.thickness).toBe(6)
 })
 
+test('work zero: presets, custom on edit, follows stock resizes', () => {
+  const o = () => store().project.origin
+  expect(o()).toEqual({ preset: 'bottom-left', x: 0, y: 0, z: 'top' })
+  store().setOrigin({ preset: 'center' })
+  expect(o()).toMatchObject({ preset: 'center', x: 150, y: 100 })
+  store().setOrigin({ preset: 'top-right' })
+  expect(o()).toMatchObject({ x: 300, y: 200 })
+  store().setStock({ w: 100, h: 50 })
+  expect(o()).toMatchObject({ preset: 'top-right', x: 100, y: 50 })
+  store().setOrigin({ x: 20 })
+  expect(o()).toMatchObject({ preset: 'custom', x: 20, y: 50 })
+  store().setOrigin({ y: 500 })
+  expect(o().y).toBe(50) // clamped to the stock
+  store().setStock({ w: 10 })
+  expect(o()).toMatchObject({ preset: 'custom', x: 10, y: 50 })
+  store().setOrigin({ z: 'bottom' })
+  expect(o()).toMatchObject({ preset: 'custom', z: 'bottom' })
+  store().setOrigin({ preset: 'bottom-left' })
+  expect(o()).toEqual({ preset: 'bottom-left', x: 0, y: 0, z: 'bottom' })
+})
+
 test('each bit follows its recommendation until customised', () => {
   const cs = () => store().project.cutSettings
   expect(cs().rough.stepdown).toBe(1.6)

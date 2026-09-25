@@ -291,6 +291,40 @@ describe('plan and gcode', () => {
   })
 })
 
+describe('work zero', () => {
+  const small = (origin: Partial<Project['origin']>) => {
+    const p = project([{ ...rect(20, 10), id: 'p', x: 30, y: 20, cut: { ...defaultCut(12), type: 'pocket', depth: 3 } }])
+    return { ...p, stock: { w: 100, h: 50, thickness: 12 }, origin: { ...p.origin, ...origin } }
+  }
+  const words = (g: string, axis: string) => [...g.matchAll(new RegExp(`^G[01] .*${axis}(-?[\\d.]+)`, 'gm'))].map((m) => Number(m[1]))
+  const gcode = (p: Project) => toGcode(planProject(p), 'rough', p)
+  it('centre zero shifts every move by (-50, -25)', () => {
+    const base = gcode(small({}))
+    const centre = gcode(small({ preset: 'center', x: 50, y: 25 }))
+    expect(words(base, 'X').length).toBeGreaterThan(0)
+    words(centre, 'X').forEach((x, i) => expect(x).toBeCloseTo(words(base, 'X')[i] - 50, 3))
+    words(centre, 'Y').forEach((y, i) => expect(y).toBeCloseTo(words(base, 'Y')[i] - 25, 3))
+    expect(words(centre, 'Z')).toEqual(words(base, 'Z'))
+    expect(centre).toContain('; XY zero: centre of stock')
+    expect(centre).toContain('; Z zero: top of stock')
+    expect(base).toContain('; XY zero: bottom-left corner')
+    expect(gcode(small({ preset: 'custom', x: 12.5, y: 40 }))).toContain('; XY zero: custom (12.5, 40 mm from bottom-left)')
+  })
+  it('Z zero at the bottom adds the thickness to every Z, including safe Z', () => {
+    const top = gcode(small({}))
+    const bottom = gcode(small({ z: 'bottom' }))
+    const safe = small({}).cutSettings.rough.safeZ
+    expect(top.split('\n')).toContain(`G0 Z${safe}`)
+    expect(bottom.split('\n')).toContain(`G0 Z${safe + 12}`)
+    expect(bottom.split('\n')).not.toContain(`G0 Z${safe}`)
+    const zt = words(top, 'Z')
+    expect(zt.length).toBeGreaterThan(2)
+    words(bottom, 'Z').forEach((z, i) => expect(z).toBeCloseTo(zt[i] + 12, 3))
+    expect(words(bottom, 'X')).toEqual(words(top, 'X'))
+    expect(bottom).toContain('; Z zero: bottom of stock (spoilboard)')
+  })
+})
+
 describe('ordering and tab limits', () => {
   const pocket = { ...rect(50, 50), id: 'p', x: 200, y: 100, cut: { ...defaultCut(12), type: 'pocket' as const, depth: 3 } }
   const outline = (extra: Partial<Shape['cut'] & object> = {}) => ({ ...rect(20, 20), id: 'o', cut: { ...defaultCut(12), ...extra } })

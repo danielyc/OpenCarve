@@ -33,8 +33,18 @@ export function opTimes(ops: Op[], s: CutSettings): number[] {
   return sec
 }
 
+const PRESET_LABEL = { center: 'centre of stock', 'bottom-left': 'bottom-left corner', 'bottom-right': 'bottom-right corner', 'top-left': 'top-left corner', 'top-right': 'top-right corner' }
+
+// "centre of stock" / "custom (12.5, 40 mm from bottom-left)"; lengths in mm.
+export const xyZeroLabel = ({ origin: o }: Project) => (o.preset === 'custom' ? `custom (${fmt(o.x)}, ${fmt(o.y)} mm from bottom-left)` : PRESET_LABEL[o.preset])
+export const zZeroLabel = ({ origin: o }: Project) => (o.z === 'top' ? 'top of stock' : 'bottom of stock (spoilboard)')
+
 export function toGcode(result: CamResult, role: BitRole, project: Project): string {
   const s = project.cutSettings[role]!
+  // Toolpaths are in stock coordinates (Z zero at the top); shift them to the work zero.
+  const { x: ox, y: oy, z: zero } = project.origin
+  const dz = zero === 'bottom' ? project.stock.thickness : 0
+  const work = (p: Pt3) => [p[0] - ox, p[1] - oy, p[2] + dz]
   const comment = (t: string) => `; ${t.replace(/[^ -~]+/g, ' ')}`
   const lines = [
     comment('OpenCarve'),
@@ -42,8 +52,10 @@ export function toGcode(result: CamResult, role: BitRole, project: Project): str
     comment(`Bit: ${effectiveBit(project, role).name}`),
     comment(`Material: ${findMaterial(project.materialId).name}`),
     comment('Units: mm'),
+    comment(`XY zero: ${xyZeroLabel(project)}`),
+    comment(`Z zero: ${zZeroLabel(project)}`),
     'G21 G90 G17 G94',
-    `G0 Z${fmt(s.safeZ)}`,
+    `G0 Z${fmt(s.safeZ + dz)}`,
     `M3 S${s.rpm}`,
     `G4 P${SPINUP_SEC}`,
   ]
@@ -54,7 +66,8 @@ export function toGcode(result: CamResult, role: BitRole, project: Project): str
     [NaN, NaN, s.safeZ],
     (seg, a, b) => {
       z = b[2]
-      const words = ['X', 'Y', 'Z'].flatMap((axis, i) => (fmt(a[i]) === fmt(b[i]) ? [] : [axis + fmt(b[i])]))
+      const [wa, wb] = [work(a), work(b)]
+      const words = ['X', 'Y', 'Z'].flatMap((axis, i) => (fmt(wa[i]) === fmt(wb[i]) ? [] : [axis + fmt(wb[i])]))
       if (!words.length) return
       if (seg.rapid) return void lines.push(`G0 ${words.join(' ')}`)
       const f = feedFor(seg, a, b, s)
@@ -63,7 +76,7 @@ export function toGcode(result: CamResult, role: BitRole, project: Project): str
       lines.push(`G1 ${words.join(' ')}`)
     },
   )
-  if (z !== s.safeZ) lines.push(`G0 Z${fmt(s.safeZ)}`)
+  if (z !== s.safeZ) lines.push(`G0 Z${fmt(s.safeZ + dz)}`)
   lines.push('M5', 'M2', '')
   return lines.join('\n')
 }
