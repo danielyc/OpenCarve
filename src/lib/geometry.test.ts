@@ -67,9 +67,12 @@ test('grid steps adapt to the zoom', () => {
   expect(steps(40)).toEqual([0.5, 5, '0.5 mm'])
   expect(steps(1, 'in')).toEqual([0.5, 5, '1/2″']) // 1/2" is 12.7 px
   expect(steps(5, 'in')).toEqual([0.125, 1, '1/8″'])
-  expect(steps(40, 'in')).toEqual([0.0625, 0.5, '1/16″'])
+  expect(steps(40, 'in')).toEqual([0.0313, 0.25, '1/32″']) // 1/32" rounded to 4 places
+  expect(steps(200)).toEqual([0.1, 0.5, '0.1 mm'])
+  expect(steps(50)).toEqual([0.5, 5, '0.5 mm']) // 0.2 mm is 10 px
   expect(steps(40, 'mm', 2)).toEqual([2, 10, '2 mm'])
-  expect(steps(1, 'mm', 2)).toEqual([20, 100, '20 mm']) // snap lines under 6 px apart: the adaptive grid
+  expect(steps(1, 'mm', 2)).toEqual([20, 100, '20 mm · snap 2 mm']) // snap lines under 6 px apart: the adaptive grid
   expect(steps(10, 'mm', 3)).toEqual([3, 30, '3 mm']) // no series value is a multiple of 3 mm: 10×
   expect(steps(40, 'in', 25.4 / 16)).toEqual([0.0625, 0.5, '1/16″'])
+  expect(steps(1, 'in', 25.4 / 16)).toEqual([0.5, 5, '1/2″ · snap 1/16″'])
 })

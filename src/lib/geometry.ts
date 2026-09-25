@@ -135,8 +135,8 @@ export function gridPath(w: number, h: number, step: number, area: Bounds) {
 }
 
 const GRID_SERIES: Record<Units, number[]> = {
-  mm: [0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500],
-  in: [1 / 16, 1 / 8, 1 / 4, 1 / 2, 1, 2, 5, 10].map((v) => v * 25.4),
+  mm: [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500],
+  in: [1 / 32, 1 / 16, 1 / 8, 1 / 4, 1 / 2, 1, 2, 5, 10].map((v) => v * 25.4),
 }
 const isMultiple = (v: number, of: number) => Math.abs(v / of - Math.round(v / of)) < 1e-9
 
@@ -147,7 +147,7 @@ export const gridLabel = (mm: number, units: Units) => {
 }
 
 // Grid steps (mm) for a zoom in px per mm. The minor step is the snap size (snap in mm, 0 = off) while its lines
-// are at least 6 px apart, otherwise the smallest series value at least 12 px apart; the major step is the next
+// are at least 6 px apart (the label names it when they aren't), otherwise the smallest series value at least 12 px apart; the major step is the next
 // series value of at least 5 minor steps and 60 px (a multiple of the snap size while snapping), else 10 minor steps.
 export function gridSteps(zoom: number, units: Units, snap: number) {
   const series = GRID_SERIES[units]
@@ -156,5 +156,6 @@ export function gridSteps(zoom: number, units: Units, snap: number) {
   const major =
     series.find((v) => v >= 5 * minor - 1e-9 && v * zoom >= 60 && (!snapping || isMultiple(v, minor))) ??
     [10, 20, 50, 100, 200, 500, 1000].map((k) => k * minor).find((v) => v * zoom >= 60)!
-  return { minor, major, label: gridLabel(minor, units) }
+  const label = gridLabel(minor, units) + (snap > 0 && !snapping ? ` · snap ${gridLabel(snap, units)}` : '')
+  return { minor, major, label }
 }
