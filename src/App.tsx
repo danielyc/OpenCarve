@@ -23,9 +23,10 @@ const TOOLS: { id: Tool; label: string }[] = [
 async function importFile(file: File | undefined) {
   if (!file) return
   try {
-    const shapes = importSvg(await file.text())
+    const { shapes, skipped } = importSvg(await file.text())
     if (shapes.length) useAppStore.getState().addShapes(shapes)
-    else alert(`No shapes found in ${file.name}`)
+    const found = shapes.length ? `Imported ${shapes.length} shape(s) from ${file.name}.` : `No shapes found in ${file.name}.`
+    if (!shapes.length || skipped) alert(skipped ? `${found} Skipped ${skipped} text/<use> element(s); convert text to paths first.` : found)
   } catch (e) {
     alert(`Could not import ${file.name}: ${(e as Error).message}`)
   }

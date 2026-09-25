@@ -63,17 +63,19 @@ function toCommands(path: ReturnType<typeof svgpath>): PathCommand[] {
 
 // ponytail: viewBox scaling is uniform (xMidYMid meet) whatever preserveAspectRatio says; stylesheets, CSS transforms,
 // <use> and nested <svg> viewports are ignored.
-export function importSvg(svgText: string): Shape[] {
+// `skipped` counts <text> and <use> elements, which aren't imported.
+export function importSvg(svgText: string): { shapes: Shape[]; skipped: number } {
   const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml')
   const root = doc.documentElement
   if (root.tagName !== 'svg' || doc.querySelector('parsererror')) throw new Error('Not a valid SVG file')
 
   const vb = root.getAttribute('viewBox')?.split(/[\s,]+/).map(Number)
   const [vw, vh] = vb?.length === 4 && vb[2] > 0 && vb[3] > 0 ? [vb[2], vb[3]] : [0, 0]
-  const scale = Math.min(
-    vw ? (lengthMm(root.getAttribute('width')) ?? vw * PX) / vw : PX,
-    vh ? (lengthMm(root.getAttribute('height')) ?? vh * PX) / vh : PX,
-  )
+  const w = lengthMm(root.getAttribute('width'))
+  const h = lengthMm(root.getAttribute('height'))
+  const sides = [vw && w ? w / vw : 0, vh && h ? h / vh : 0].filter((v) => v > 0)
+  const scale = sides.length ? Math.min(...sides) : PX
+  const skipped = [...root.querySelectorAll('text, use')].filter((el) => !el.closest(SKIP)).length
 
   const items: { name: string; polys: Polyline[]; evenOdd: boolean }[] = []
   for (const el of root.querySelectorAll('path, rect, circle, ellipse, line, polyline, polygon')) {
@@ -82,26 +84,28 @@ export function importSvg(svgText: string): Shape[] {
     let hidden = false
     let fillRule = null
     let visibility = null
+    const inherited = (v: string | null) => (v === 'inherit' ? null : v)
     for (let node: Element | null = el; node; node = node.parentElement) {
       const t = node.getAttribute('transform')
       if (t && node !== root) path = path.transform(t)
       hidden ||= prop(node, 'display') === 'none'
-      fillRule ??= prop(node, 'fill-rule')
-      visibility ??= prop(node, 'visibility')
+      fillRule ??= inherited(prop(node, 'fill-rule'))
+      visibility ??= inherited(prop(node, 'visibility'))
     }
     if (hidden || visibility === 'hidden' || visibility === 'collapse') continue
     path = path.matrix([scale, 0, 0, -scale, 0, 0])
     const polys = commandsToPolylines(toCommands(path))
     if (polys.length) items.push({ name: el.id || el.tagName[0].toUpperCase() + el.tagName.slice(1), polys, evenOdd: fillRule === 'evenodd' })
   }
-  if (!items.length) return []
+  if (!items.length) return { shapes: [], skipped }
 
   const all = polylineBounds(items.flatMap((i) => i.polys))
-  return items.map(({ name, polys, evenOdd }): Shape => {
+  const shapes = items.map(({ name, polys, evenOdd }): Shape => {
     const b = polylineBounds(polys)
     const [cx, cy] = [(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2]
     const rel = polys.map((p) => ({ closed: p.closed, points: p.points.map(([x, y]): Point => [x - cx, y - cy]) }))
     const base = { id: newId(), name, rotation: 0, x: cx - all.minX + ORIGIN, y: cy - all.minY + ORIGIN, ...(evenOdd && { fillRule: 'evenodd' as const }) }
     return rel.length === 1 ? { ...base, type: 'path', ...rel[0] } : { ...base, type: 'compound', paths: rel }
   })
+  return { shapes, skipped }
 }

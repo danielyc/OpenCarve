@@ -3,7 +3,7 @@ import { icons } from '../icons'
 import { FONTS, loadFont } from '../lib/fonts'
 import { dominantScale, fitText, localBounds, polylineBounds, scaleShape, shapeBounds, shapeToPolylines, tabPositions, toLocal, toWorld, type Bounds } from '../lib/geometry'
 import { formatLength } from '../lib/units'
-import { newId, type Point, type Polyline, type Shape } from '../model'
+import { newId, tabsActive, type Point, type Polyline, type Shape } from '../model'
 import { useAppStore, type Align } from '../store'
 
 type Frame = { x: number; y: number; rotation: number; b: Bounds }
@@ -114,6 +114,7 @@ export default function Canvas() {
   const tool = useAppStore((s) => s.tool)
   const view = useAppStore((s) => s.view)
   useAppStore((s) => s.fontsVersion)
+  const status = useAppStore((s) => s.status)
   const svgRef = useRef<SVGSVGElement>(null)
   const [drag, setDrag] = useState<Drag | null>(null)
   const [hover, setHover] = useState<string | null>(null)
@@ -162,7 +163,8 @@ export default function Canvas() {
       const r = svg.getBoundingClientRect()
       const cx = e.clientX - r.left
       const cy = e.clientY - r.top
-      const zoom = Math.min(200, Math.max(0.05, view.zoom * Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.002))))
+      const dy = e.ctrlKey ? Math.min(10, Math.max(-10, e.deltaY)) : e.deltaY // pinch deltas spike on some trackpads
+      const zoom = Math.min(200, Math.max(0.05, view.zoom * Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.002))))
       const f = zoom / view.zoom
       setView({ zoom, panX: cx - (cx - view.panX) * f, panY: cy - (cy - view.panY) * f })
     }
@@ -368,7 +370,7 @@ export default function Canvas() {
             const cls = selection.includes(s.id) ? 'selected' : hover === s.id ? 'hover' : ''
             const { cut } = s
             // Tabs are shown per contour so every separate piece is visibly held.
-            const tabs = cut?.tabs ? polys.flatMap((p) => tabPositions([p], cut.tabCount)) : []
+            const tabs = cut && tabsActive(cut, stock.thickness) ? polys.flatMap((p) => tabPositions([p], cut.tabCount)) : []
             const w = (cut?.tabWidth ?? 0) / 2
             return (
               <g key={s.id} data-id={s.id} data-cut={cut?.type ?? 'none'} data-side={cut?.type === 'outline' ? cut.side : undefined} className={`shape ${cls}`}>
@@ -405,6 +407,11 @@ export default function Canvas() {
       </svg>
       <div className="canvas-status" aria-live="off">
         {cursor ? `X ${formatLength(cursor[0], units)}  Y ${formatLength(cursor[1], units)} ${units}` : ' '}
+        {status && (
+          <span className="status-error" role="alert">
+            {status}
+          </span>
+        )}
       </div>
     </section>
   )

@@ -1,6 +1,6 @@
 import { beforeEach, expect, test } from 'vitest'
 import { shapeBounds } from './lib/geometry'
-import { newProject, type Shape } from './model'
+import { newProject, tabsActive, type Shape } from './model'
 import { useAppStore } from './store'
 
 const store = useAppStore.getState
@@ -101,14 +101,18 @@ test('open paths are forced to an outline on the path', () => {
   expect(store().project.shapes[0].cut).toMatchObject({ type: 'outline', side: 'on' })
 })
 
-test('depth is clamped and tabs need a through outline', () => {
+test('depth and tab sizes are clamped; tabs are kept but only active on a through outline', () => {
   store().addShape(rect('a', 10, 10))
-  store().setCut(['a'], { depth: 50 })
-  expect(store().project.shapes[0].cut?.depth).toBe(12)
+  const cut = () => store().project.shapes[0].cut!
+  store().setCut(['a'], { depth: 50, tabHeight: 20, tabWidth: -1 })
+  expect(cut()).toMatchObject({ depth: 12, tabHeight: 11.9, tabWidth: 0.1 })
   store().setCut(['a'], { depth: 0 })
-  expect(store().project.shapes[0].cut).toMatchObject({ depth: 0.1, tabs: false })
-  store().setCut(['a'], { type: 'pocket', depth: 12, tabs: true })
-  expect(store().project.shapes[0].cut?.tabs).toBe(false)
+  expect(cut()).toMatchObject({ depth: 0.1, tabs: true })
+  expect(tabsActive(cut(), 12)).toBe(false)
+  store().setCut(['a'], { type: 'pocket', depth: 12 })
+  expect(tabsActive(cut(), 12)).toBe(false)
+  store().setCut(['a'], { type: 'outline' })
+  expect(tabsActive(cut(), 12)).toBe(true)
   store().setCut(['a'], null)
   expect(store().project.shapes[0].cut).toBeUndefined()
 })
@@ -119,23 +123,32 @@ test('stock thickness changes clamp depths and keep through cuts through', () =>
   store().setCut(['c'], { type: 'pocket', depth: 4 })
   store().setStock({ thickness: 6 })
   expect(store().project.shapes.map((s) => s.cut?.depth)).toEqual([6, 6, 4])
+  expect(store().project.shapes[0].cut?.tabHeight).toBe(3)
   store().setStock({ thickness: 18 })
   expect(store().project.shapes.map((s) => s.cut?.depth)).toEqual([18, 18, 4])
-  expect(store().project.shapes[0].cut?.tabs).toBe(true)
   store().undo()
   expect(store().project.stock.thickness).toBe(6)
 })
 
-test('cut settings follow the recommendation until customised', () => {
-  expect(store().project.cutSettings.stepdown).toBe(1.6)
-  store().setBits({ rough: '1/4-endmill' })
-  expect(store().project.cutSettings.stepdown).toBe(3.2)
-  store().setCutSettings({ feed: 900 })
-  expect(store().project.cutSettingsCustom).toBe(true)
-  store().setBits({ rough: '1/16-endmill' })
+test('each bit follows its recommendation until customised', () => {
+  const cs = () => store().project.cutSettings
+  expect(cs().rough.stepdown).toBe(1.6)
+  expect(cs().detail).toBeUndefined()
+  store().setBits({ rough: '1/4-endmill', detail: '1mm-endmill' })
+  expect(cs().rough.stepdown).toBe(3.2)
+  expect(cs().detail?.feed).toBeLessThanOrEqual(600)
+  store().setCutSettings('rough', { feed: 900 })
+  expect(store().project.cutSettingsCustom).toEqual({ rough: true, detail: false })
   store().setMaterialId('acrylic')
-  expect(store().project.cutSettings).toMatchObject({ feed: 900, stepdown: 3.2 })
-  store().resetCutSettings()
-  expect(store().project.cutSettings).toMatchObject({ feed: 800, stepdown: 0.4, rpm: 16000 })
-  expect(store().project.cutSettingsCustom).toBe(false)
+  expect(cs().rough).toMatchObject({ feed: 900, stepdown: 3.2 })
+  expect(cs().detail?.rpm).toBe(16000)
+  store().setMachine({ name: '3018', w: 300, h: 180, maxRpm: 10000 })
+  expect(cs().rough.rpm).toBe(18000)
+  expect(cs().detail?.rpm).toBe(10000)
+  store().resetCutSettings('rough')
+  expect(cs().rough).toMatchObject({ feed: 1200, stepdown: 1.6, rpm: 10000 })
+  store().setCutSettings('detail', { feed: 100 })
+  store().setBits({ rough: '1/4-endmill' })
+  expect(cs().detail).toBeUndefined()
+  expect(store().project.cutSettingsCustom.detail).toBe(false)
 })

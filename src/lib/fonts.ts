@@ -11,10 +11,11 @@ export const FONTS = [
 
 const pending = new Map<string, Promise<Font>>()
 const loaded = new Map<string, Font>()
+const failed = new Set<string>()
 const glyphCache = new Map<string, Polyline[]>()
 const CACHE_SIZE = 200
-let notify = () => {}
-export const onFontLoad = (fn: () => void) => (notify = fn)
+let notify: (error?: string) => void = () => {}
+export const onFontLoad = (fn: (error?: string) => void) => (notify = fn)
 
 export function loadFont(id: string): Promise<Font> {
   let p = pending.get(id)
@@ -28,11 +29,14 @@ export function loadFont(id: string): Promise<Font> {
       .then(async (buf) => {
         const font = (await import('opentype.js')).parse(buf)
         loaded.set(id, font)
+        failed.delete(id)
         notify()
         return font
       })
       .catch((e) => {
         pending.delete(id)
+        failed.add(id)
+        notify(`Could not load font ${file}`)
         throw e
       })
     pending.set(id, p)
@@ -59,11 +63,12 @@ export function glyphPolylines(font: Font, text: string, size: number): Polyline
   return out
 }
 
-// Flattened at the real size (mm) so the tolerance holds. Returns null (and starts loading) until the font is ready.
+// Flattened at the real size (mm) so the tolerance holds. Returns null (and starts loading) until the font is ready;
+// a font that failed to load is only retried by an explicit loadFont().
 export function textGlyphs(fontId: string, size: number, text: string): Polyline[] | null {
   const font = loaded.get(fontId)
   if (!font) {
-    if (!pending.has(fontId)) loadFont(fontId).catch(console.error)
+    if (!pending.has(fontId) && !failed.has(fontId)) loadFont(fontId).catch(console.error)
     return null
   }
   const key = `${fontId}|${size}|${text}`

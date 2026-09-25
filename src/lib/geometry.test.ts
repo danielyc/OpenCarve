@@ -53,5 +53,5 @@ test('tab positions are evenly spaced along the outline', () => {
     expect(arc(point)).toBeCloseTo(37.5 + 75 * i)
     expect(Math.hypot(...tangent)).toBeCloseTo(1)
   })
-  expect(tabPositions([{ closed: false, points: [[0, 0], [10, 0]] }], 2).map((t) => t.point[0])).toEqual([2.5, 7.5])
+  expect(tabPositions([{ closed: false, points: [[0, 0], [0, 0], [10, 0], [10, 0]] }], 2).map((t) => t.point[0])).toEqual([2.5, 7.5])
 })

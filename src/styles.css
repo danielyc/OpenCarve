@@ -515,3 +515,14 @@ button:disabled {
   border-radius: 6px;
   background: var(--surface);
 }
+
+.status-error {
+  float: right;
+  color: #c92a2a;
+}
+
+.hint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}

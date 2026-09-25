@@ -3,7 +3,7 @@ import { onFontLoad } from './lib/fonts'
 import { polylineBounds, shapeBounds, shapeToPolylines } from './lib/geometry'
 import { findBit, findMaterial, recommendedSettings } from './lib/library'
 import type { Units } from './lib/units'
-import { defaultCut, newId, newProject, validCut, type Cut, type CutSettings, type Project, type Shape, type ShapePatch } from './model'
+import { defaultCut, newId, newProject, validCut, type BitRole, type Cut, type CutSettings, type Project, type Shape, type ShapePatch } from './model'
 
 export type Step = 'design' | 'simulate' | 'export'
 export type Tool = 'select' | 'rect' | 'ellipse' | 'polygon' | 'pen' | 'text'
@@ -27,6 +27,7 @@ interface AppState {
   future: Project[]
   transientBase: Project | null
   fontsVersion: number
+  status: string | null
   setStep: (step: Step) => void
   addShape: (shape: Shape) => void
   addShapes: (shapes: Shape[]) => void
@@ -42,8 +43,8 @@ interface AppState {
   setStock: (patch: Partial<Project['stock']>) => void
   setMaterialId: (id: string) => void
   setBits: (bits: Project['bits']) => void
-  setCutSettings: (patch: Partial<CutSettings>) => void
-  resetCutSettings: () => void
+  setCutSettings: (role: BitRole, patch: Partial<CutSettings>) => void
+  resetCutSettings: (role: BitRole) => void
   setMachine: (machine: Project['machine']) => void
   setCut: (ids: string[], patch: Partial<Cut> | null) => void
   setUnits: (units: Units) => void
@@ -58,8 +59,17 @@ const pushHistory = (past: Project[], project: Project) => [...past, project].sl
 
 const existing = (ids: string[], project: Project) => ids.filter((id) => project.shapes.some((s) => s.id === id))
 
-const recommended = (p: Project): Project =>
-  p.cutSettingsCustom ? p : { ...p, cutSettings: recommendedSettings(findMaterial(p.materialId), findBit(p.bits.rough)) }
+// Recomputes each bit's settings unless the user customised them; detail settings exist only with a detail bit.
+function recommended(p: Project): Project {
+  const rec = (role: BitRole, id: string) =>
+    (p.cutSettingsCustom[role] && p.cutSettings[role]) || recommendedSettings(findMaterial(p.materialId), findBit(id), p.machine.maxRpm)
+  const { detail } = p.bits
+  return {
+    ...p,
+    cutSettings: { rough: rec('rough', p.bits.rough), ...(detail && { detail: rec('detail', detail) }) },
+    cutSettingsCustom: detail ? p.cutSettingsCustom : { ...p.cutSettingsCustom, detail: false },
+  }
+}
 
 export const useAppStore = create<AppState>()((set, get) => {
   // During a transient gesture, edits replace the project without recording history; commit() records one entry.
@@ -86,6 +96,7 @@ export const useAppStore = create<AppState>()((set, get) => {
     future: [],
     transientBase: null,
     fontsVersion: 0,
+    status: null,
     setStep: (step) => set({ step }),
 
     addShape: (shape) => get().addShapes([shape]),
@@ -189,9 +200,14 @@ export const useAppStore = create<AppState>()((set, get) => {
       }),
     setMaterialId: (materialId) => setProject((p) => recommended({ ...p, materialId })),
     setBits: (bits) => setProject((p) => recommended({ ...p, bits })),
-    setCutSettings: (patch) => setProject((p) => ({ ...p, cutSettings: { ...p.cutSettings, ...patch }, cutSettingsCustom: true })),
-    resetCutSettings: () => setProject((p) => recommended({ ...p, cutSettingsCustom: false })),
-    setMachine: (machine) => setProject((p) => ({ ...p, machine })),
+    setCutSettings: (role, patch) =>
+      setProject((p) =>
+        p.cutSettings[role]
+          ? { ...p, cutSettings: { ...p.cutSettings, [role]: { ...p.cutSettings[role], ...patch } }, cutSettingsCustom: { ...p.cutSettingsCustom, [role]: true } }
+          : p,
+      ),
+    resetCutSettings: (role) => setProject((p) => recommended({ ...p, cutSettingsCustom: { ...p.cutSettingsCustom, [role]: false } })),
+    setMachine: (machine) => setProject((p) => recommended({ ...p, machine })),
     setCut: (ids, patch) =>
       setProject((p) => {
         const t = p.stock.thickness
@@ -223,4 +239,4 @@ export const useAppStore = create<AppState>()((set, get) => {
   }
 })
 
-onFontLoad(() => useAppStore.setState((s) => ({ fontsVersion: s.fontsVersion + 1 })))
+onFontLoad((error) => useAppStore.setState((s) => ({ fontsVersion: s.fontsVersion + 1, ...(error && { status: error }) })))

@@ -1,9 +1,9 @@
-import { useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { FONTS, loadFont } from './lib/fonts'
 import { fitText, localBounds, scaleShape } from './lib/geometry'
 import { BITS, findBit, findMaterial, MACHINES, MATERIALS } from './lib/library'
 import { formatLength, mmToIn, parseLength, type Units } from './lib/units'
-import { isOpen, type Cut, type Shape } from './model'
+import { isOpen, tabsActive, type BitRole, type Cut, type Shape } from './model'
 import { useAppStore } from './store'
 
 // `live` commits on every keystroke; the whole focus session is a single undo entry.
@@ -53,16 +53,26 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 const BIT_TYPES = { endmill: 'Endmill', ballnose: 'Ballnose', vbit: 'V-bit' }
 
 // Native radios give arrow-key navigation; an empty value (mixed selection) leaves all unchecked.
-function Segmented<T extends string>({ label, name, value, options, onChange }: { label: string; name: string; value: string; options: { value: T; label: string; disabled?: string }[]; onChange: (v: T) => void }) {
+// `hint` explains any disabled options and is shown under the group.
+function Segmented<T extends string>(props: { label: string; value: string; options: { value: T; label: string; disabled?: boolean }[]; hint?: string; onChange: (v: T) => void }) {
+  const { label, value, options, hint, onChange } = props
+  const id = useId()
   return (
-    <div className="segmented" role="radiogroup" aria-label={label}>
-      {options.map((o) => (
-        <label key={o.value} title={o.disabled}>
-          <input type="radio" name={name} checked={value === o.value} disabled={!!o.disabled} onChange={() => onChange(o.value)} />
-          {o.label}
-        </label>
-      ))}
-    </div>
+    <>
+      <div className="segmented" role="radiogroup" aria-label={label} aria-describedby={hint ? id : undefined}>
+        {options.map((o) => (
+          <label key={o.value}>
+            <input type="radio" name={id} checked={value === o.value} disabled={o.disabled} onChange={() => onChange(o.value)} />
+            {o.label}
+          </label>
+        ))}
+      </div>
+      {hint && (
+        <p id={id} className="hint">
+          {hint}
+        </p>
+      )}
+    </>
   )
 }
 
@@ -78,11 +88,12 @@ function CutSection({ selected }: { selected: Shape[] }) {
   const setCut = (patch: Partial<Cut> | null) => st().setCut(ids, patch)
   const cuts = selected.map((s) => s.cut)
   const carved = cuts.every((c) => c)
-  const open = selected.some(isOpen) ? 'Open paths can only be cut along the path' : undefined
+  const open = selected.some(isOpen)
   const vbit = [bits.rough, bits.detail].some((id) => id && findBit(id).type === 'vbit')
   const type = shared((s) => s.cut?.type ?? 'none')
   const through = cuts.every((c) => c && c.depth >= t)
   const depth = cuts[0]?.depth ?? t
+  const sameDepth = cuts.every((c) => c?.depth === depth)
   const tabbable = cuts.every((c) => c?.type === 'outline' && c.depth >= t)
   const tabs = shared((s) => String(!!s.cut?.tabs))
   const numberField = (label: string, get: (c: Cut) => number, set: (v: number) => Partial<Cut>, isLength = true) => (
@@ -99,20 +110,19 @@ function CutSection({ selected }: { selected: Shape[] }) {
     <Section title="Cut">
       <Segmented
         label="Cut type"
-        name="cut-type"
         value={type}
         options={[
           { value: 'outline', label: 'Outline' },
           { value: 'pocket', label: 'Pocket', disabled: open },
-          { value: 'vcarve', label: 'V-carve', disabled: open ?? (vbit ? undefined : 'Choose a V-bit as the rough or detail bit to V-carve') },
+          { value: 'vcarve', label: 'V-carve', disabled: open || !vbit },
           { value: 'none', label: 'None' },
         ]}
+        hint={open ? 'Open paths can only be cut along the path.' : vbit ? undefined : 'V-carve needs a V-bit as the rough or detail bit.'}
         onChange={(v) => setCut(v === 'none' ? null : { type: v })}
       />
       {type === 'outline' && (
         <Segmented
           label="Cut side"
-          name="cut-side"
           value={shared((s) => s.cut?.side ?? '')}
           options={[
             { value: 'outside', label: 'Outside', disabled: open },
@@ -124,26 +134,29 @@ function CutSection({ selected }: { selected: Shape[] }) {
       )}
       {carved && (
         <>
-          <div className="depth">
-            <input
-              type="range"
-              aria-label="Depth slider"
-              aria-valuetext={depth >= t ? 'Through' : `${formatLength(depth, units)} ${units}`}
-              min={0.1}
-              max={t}
-              step="any"
-              value={Math.min(depth, t)}
-              onFocus={() => st().beginTransient()}
-              onBlur={() => st().commit()}
-              onChange={(e) => {
-                const v = Number(e.target.value)
-                setCut({ depth: v > t - 0.05 ? t : Math.round(v * 10) / 10 })
-              }}
-            />
-            {through && <span className="badge">Through</span>}
-          </div>
+          {sameDepth && (
+            <div className="depth">
+              <input
+                type="range"
+                aria-label="Depth"
+                aria-valuetext={through ? 'Through' : `${formatLength(depth, units)} ${units}`}
+                min={0.1}
+                max={t}
+                step="any"
+                value={Math.min(depth, t)}
+                onPointerDown={() => st().beginTransient()}
+                onPointerUp={() => st().commit()}
+                onBlur={() => st().commit()}
+                onChange={(e) => {
+                  const v = Number(e.target.value)
+                  setCut({ depth: v > t - 0.05 ? t : Math.round(v * 10) / 10 })
+                }}
+              />
+              {through && <span className="badge">Through</span>}
+            </div>
+          )}
           <div className="fields">
-            {numberField('Depth', (c) => c.depth, (depth) => ({ depth }))}
+            {numberField('Depth value', (c) => c.depth, (depth) => ({ depth }))}
           </div>
           {tabbable && (
             <label className="check">
@@ -158,7 +171,7 @@ function CutSection({ selected }: { selected: Shape[] }) {
               Tabs
             </label>
           )}
-          {tabbable && tabs === 'true' && (
+          {selected.every((s) => tabsActive(s.cut, t)) && (
             <div className="fields">
               {numberField('Tab count', (c) => c.tabCount, (tabCount) => ({ tabCount }), false)}
               {numberField('Tab width', (c) => c.tabWidth, (tabWidth) => ({ tabWidth }))}
@@ -200,6 +213,49 @@ export default function Inspector() {
         }}
       />
     )
+    const count = (label: string, n: number, set: (v: number) => void) => (
+      <Field
+        label={label}
+        value={String(n)}
+        onCommit={(t) => {
+          const v = Math.round(Number(t))
+          if (v > 0) set(v)
+        }}
+      />
+    )
+    const bitSettings = (role: BitRole) => {
+      const c = cutSettings[role]
+      if (!c) return null
+      const set = (patch: Parameters<ReturnType<typeof st>['setCutSettings']>[1]) => st().setCutSettings(role, patch)
+      return (
+        <Section key={role} title={role === 'rough' ? 'Rough cut settings' : 'Detail cut settings'}>
+          <div className="fields">
+            {rate('Feed', c.feed, (feed) => set({ feed }))}
+            {rate('Plunge', c.plunge, (plunge) => set({ plunge }))}
+            {length('Stepdown', c.stepdown, (stepdown) => set({ stepdown }))}
+            {count('Stepover %', Math.round(c.stepover * 100), (v) => set({ stepover: Math.min(100, v) / 100 }))}
+            {count('RPM', c.rpm, (rpm) => set({ rpm }))}
+            {length('Safe Z', c.safeZ, (safeZ) => set({ safeZ }))}
+            <label className="field wide">
+              <span>Direction</span>
+              <select value={c.direction} onChange={(e) => set({ direction: e.target.value as typeof c.direction })}>
+                <option value="conventional">Conventional</option>
+                <option value="climb">Climb</option>
+              </select>
+            </label>
+          </div>
+          <p className="note">
+            {cutSettingsCustom[role] ? (
+              <button onClick={() => st().resetCutSettings(role)}>Reset to recommended</button>
+            ) : (
+              <span className="badge" title={`For ${findMaterial(project.materialId).name} with this bit`}>
+                Recommended
+              </span>
+            )}
+          </p>
+        </Section>
+      )
+    }
     const bitSelect = (label: string, id: string | undefined, set: (id: string) => void, none = false) => {
       const bit = id ? findBit(id) : null
       return (
@@ -252,6 +308,7 @@ export default function Inspector() {
             </label>
             {length('Travel X', machine.w, (w) => st().setMachine({ ...machine, name: 'Custom', w }))}
             {length('Travel Y', machine.h, (h) => st().setMachine({ ...machine, name: 'Custom', h }))}
+            {count('Max RPM', machine.maxRpm, (maxRpm) => st().setMachine({ ...machine, name: 'Custom', maxRpm }))}
           </div>
         </Section>
         <Section title="Bits">
@@ -272,31 +329,8 @@ export default function Inspector() {
             </select>
           </label>
         </Section>
-        <Section title="Cut settings">
-          <div className="fields">
-            {rate('Feed', cutSettings.feed, (feed) => st().setCutSettings({ feed }))}
-            {rate('Plunge', cutSettings.plunge, (plunge) => st().setCutSettings({ plunge }))}
-            {length('Stepdown', cutSettings.stepdown, (stepdown) => st().setCutSettings({ stepdown }))}
-            <Field
-              label="RPM"
-              value={String(cutSettings.rpm)}
-              onCommit={(t) => {
-                const v = Math.round(Number(t))
-                if (v > 0) st().setCutSettings({ rpm: v })
-              }}
-            />
-            {length('Safe Z', cutSettings.safeZ, (safeZ) => st().setCutSettings({ safeZ }))}
-          </div>
-          <p className="note">
-            {cutSettingsCustom ? (
-              <button onClick={() => st().resetCutSettings()}>Reset to recommended</button>
-            ) : (
-              <span className="badge" title={`For ${findMaterial(project.materialId).name} with the rough bit`}>
-                Recommended
-              </span>
-            )}
-          </p>
-        </Section>
+        {bitSettings('rough')}
+        {bitSettings('detail')}
       </>
     )
   }

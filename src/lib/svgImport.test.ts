@@ -6,7 +6,7 @@ import { importSvg } from './svgImport'
 
 const PX = 25.4 / 96
 const svg = (body: string, attrs = 'viewBox="0 0 100 100" width="100mm" height="100mm"') =>
-  importSvg(`<svg xmlns="http://www.w3.org/2000/svg" ${attrs}>${body}</svg>`)
+  importSvg(`<svg xmlns="http://www.w3.org/2000/svg" ${attrs}>${body}</svg>`).shapes
 const size = (s: Shape) => {
   const b = shapeBounds(s)
   return [b.maxX - b.minX, b.maxY - b.minY]
@@ -66,13 +66,20 @@ test('rejects non-SVG input', () => {
   expect(() => importSvg('<html></html>')).toThrow()
 })
 
-test('viewBox scales uniformly (meet)', () => {
+test('viewBox scales uniformly (meet), using only the sides given', () => {
   close(size(svg('<rect width="100" height="100"/>', 'viewBox="0 0 100 100" width="100mm" height="50mm"')[0]), [50, 50])
+  close(size(svg('<rect width="100" height="100"/>', 'viewBox="0 0 100 100" width="100mm"')[0]), [100, 100])
+})
+
+test('counts skipped text and use elements', () => {
+  const r = importSvg('<svg xmlns="http://www.w3.org/2000/svg"><defs><text>x</text></defs><text>a</text><use href="#p"/><rect width="5" height="5"/></svg>')
+  expect(r.shapes).toHaveLength(1)
+  expect(r.skipped).toBe(2)
 })
 
 test('rounded rect, fill-rule and hidden elements', () => {
   const [r, e, ...rest] = svg(
-    '<rect width="40" height="20" rx="30"/><g style="fill-rule: evenodd"><path d="M0 0h10v10h-10z M2 2h6v6h-6z"/></g>' +
+    '<rect width="40" height="20" rx="30"/><g style="fill-rule: evenodd"><path fill-rule="inherit" d="M0 0h10v10h-10z M2 2h6v6h-6z"/></g>' +
       '<rect width="5" height="5" display="none"/><g visibility="hidden"><rect width="5" height="5"/></g>',
   )
   expect(rest).toHaveLength(0)

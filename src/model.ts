@@ -1,4 +1,4 @@
-import { findBit, findMaterial, recommendedSettings } from './lib/library'
+import { findBit, findMaterial, MACHINES, recommendedSettings } from './lib/library'
 import type { Units } from './lib/units'
 
 export type Point = [number, number]
@@ -51,6 +51,8 @@ export interface TextShape extends ShapeBase {
   h: number
 }
 
+// Coordinates: XY origin is the stock's bottom-left corner, Y up; Z zero is the top of the stock there, Z down negative.
+
 // Multi-subpath import (e.g. an SVG path with holes); points are relative to x, y.
 export interface CompoundShape extends ShapeBase {
   type: 'compound'
@@ -69,6 +71,7 @@ export interface Bit {
   type: 'endmill' | 'ballnose' | 'vbit'
   diameter: number // mm
   angle?: number // included angle in degrees, vbit only
+  flat?: number // tip flat diameter in mm, vbit only
 }
 
 export interface Material {
@@ -86,11 +89,19 @@ export interface CutSettings {
   stepdown: number // mm
   rpm: number
   safeZ: number // mm
+  stepover: number // fraction of bit diameter between pocket passes
+  direction: 'climb' | 'conventional'
 }
 
+export type BitRole = 'rough' | 'detail'
+
+// `side` (outline only) is relative to the shape's filled region: holes come from nesting/winding (fillRule),
+// so "outside" cuts outside the outer contours and inside the holes, not outside every contour.
+// Tabs are placed per contour (tabPositions on each polyline); tabHeight is measured up from the stock bottom.
+// `tabs` is the user's choice; tabsActive() says whether it applies.
 export interface Cut {
   type: 'outline' | 'pocket' | 'vcarve'
-  side: 'outside' | 'inside' | 'on' // outline only
+  side: 'outside' | 'inside' | 'on'
   depth: number // mm from top; >= stock.thickness means through
   tabs: boolean
   tabCount: number
@@ -105,9 +116,9 @@ export interface Project {
   stock: { w: number; h: number; thickness: number }
   materialId: string
   bits: { rough: string; detail?: string }
-  cutSettings: CutSettings
-  cutSettingsCustom: boolean // false = follow recommendedSettings
-  machine: { name: string; w: number; h: number }
+  cutSettings: { rough: CutSettings; detail?: CutSettings } // detail present iff bits.detail
+  cutSettingsCustom: Record<BitRole, boolean> // false = follow recommendedSettings
+  machine: { name: string; w: number; h: number; maxRpm: number }
   shapes: Shape[]
 }
 
@@ -123,13 +134,23 @@ export const defaultCut = (thickness: number): Cut => ({
   tabHeight: 3,
 })
 
-// Open paths can only be followed; tabs only make sense on a through outline.
+const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
+
+// Open paths can only be followed.
 export function validCut(s: Shape, cut: Cut, thickness: number): Cut {
   const open = isOpen(s)
-  const type = open ? 'outline' : cut.type
-  const depth = Math.min(thickness, Math.max(0.1, cut.depth))
-  return { ...cut, type, side: open ? 'on' : cut.side, depth, tabs: cut.tabs && type === 'outline' && depth >= thickness }
+  return {
+    ...cut,
+    type: open ? 'outline' : cut.type,
+    side: open ? 'on' : cut.side,
+    depth: clamp(cut.depth, 0.1, thickness),
+    tabCount: Math.max(1, Math.round(cut.tabCount)),
+    tabWidth: Math.max(0.1, cut.tabWidth),
+    tabHeight: clamp(cut.tabHeight, 0.1, thickness - 0.1),
+  }
 }
+
+export const tabsActive = (cut: Cut | undefined, thickness: number) => !!cut?.tabs && cut.type === 'outline' && cut.depth >= thickness
 
 export const newId = () => crypto.randomUUID()
 
@@ -140,8 +161,8 @@ export const newProject = (): Project => ({
   stock: { w: 300, h: 200, thickness: 12 },
   materialId: 'mdf',
   bits: { rough: '1/8-endmill' },
-  cutSettings: recommendedSettings(findMaterial('mdf'), findBit('1/8-endmill')),
-  cutSettingsCustom: false,
-  machine: { name: 'Generic GRBL', w: 300, h: 300 },
+  cutSettings: { rough: recommendedSettings(findMaterial('mdf'), findBit('1/8-endmill'), MACHINES[0].maxRpm) },
+  cutSettingsCustom: { rough: false, detail: false },
+  machine: MACHINES[0],
   shapes: [],
 })
