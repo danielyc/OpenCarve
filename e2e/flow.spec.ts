@@ -89,3 +89,39 @@ test('designs, simulates, exports and reopens a two-bit sign', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Project name: Sign' })).toBeVisible()
   await expect(page.locator('[data-id]')).toHaveCount(2)
 })
+
+// In this file so it runs after the flow test rather than alongside it: headless WebGL is software-rendered, and every
+// animation frame redraws the 1.2 M-cell surface, which starves tests running in parallel.
+test('plays and scrubs the toolpath animation', async ({ page }) => {
+  test.setTimeout(60_000)
+  await page.goto('/')
+  await page.getByRole('button', { name: 'New project' }).click()
+  const box = (await page.getByLabel('Design canvas').boundingBox())!
+  const [cx, cy] = [box.x + box.width / 2, box.y + box.height / 2]
+  await page.getByRole('button', { name: 'Rectangle' }).click()
+  await page.mouse.move(cx - 80, cy - 50)
+  await page.mouse.down()
+  await page.mouse.move(cx + 80, cy + 50, { steps: 4 })
+  await page.mouse.up()
+  await page.getByRole('radio', { name: 'Outline' }).click()
+
+  await page.getByRole('button', { name: /^Simulate/ }).click()
+  const bar = page.getByRole('group', { name: 'Toolpath animation' })
+  await expect(bar).toBeVisible({ timeout: 15_000 })
+  const current = bar.locator('.playback-current')
+  const total = await bar.locator('.playback-total').textContent()
+  await expect(current).toHaveText(total!) // starts at the end, showing the finished job
+
+  await bar.getByRole('button', { name: 'Play animation' }).click()
+  await expect(bar.getByRole('button', { name: 'Pause animation' })).toBeVisible()
+  await page.waitForTimeout(1000)
+  await expect(current).not.toHaveText('0:00', { timeout: 20_000 })
+  expect(parseFloat((await bar.getAttribute('data-anim-t'))!)).toBeGreaterThan(0)
+  expect(await page.evaluate(() => !!document.querySelector('[data-tool-visible=true]'))).toBe(true)
+  await bar.getByRole('button', { name: 'Pause animation' }).click()
+
+  const slider = bar.getByRole('slider', { name: 'Animation time' })
+  await slider.focus()
+  await page.keyboard.press('End')
+  await expect(current).toHaveText(total!)
+})
