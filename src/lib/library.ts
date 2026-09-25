@@ -1,4 +1,4 @@
-import type { Bit, CutSettings, Material, Project } from '../model'
+import type { Bit, BitOverride, BitRole, CutSettings, Material, Project } from '../model'
 
 export const BITS: Bit[] = [
   { id: '1mm-endmill', name: '1 mm endmill', type: 'endmill', diameter: 1 },
@@ -28,14 +28,34 @@ export const MATERIALS: Material[] = [
 export const MACHINES: Project['machine'][] = [
   { name: 'Generic GRBL', w: 300, h: 300, maxRpm: 24000 },
   { name: '3018', w: 300, h: 180, maxRpm: 10000 },
-  { name: 'X-Carve 750', w: 750, h: 750, maxRpm: 24000 },
-  { name: 'X-Carve 1000', w: 1000, h: 1000, maxRpm: 24000 },
+  { name: 'Onefinity Woodworker', w: 816, h: 816, maxRpm: 24000 },
   { name: 'Shapeoko 4 XL', w: 838, h: 438, maxRpm: 24000 },
   { name: 'Shapeoko 4 XXL', w: 838, h: 838, maxRpm: 24000 },
-  { name: 'Onefinity Woodworker', w: 816, h: 816, maxRpm: 24000 },
+  { name: 'TwoTrees TTC450 (500 W)', w: 460, h: 460, maxRpm: 12000 },
+  { name: 'X-Carve 750', w: 750, h: 750, maxRpm: 24000 },
+  { name: 'X-Carve 1000', w: 1000, h: 1000, maxRpm: 24000 },
 ]
 
 export const findBit = (id: string) => BITS.find((b) => b.id === id) ?? BITS[0]
+
+// The library bit for a role with the project's override applied. Callers only ask for roles that have a bit.
+export function effectiveBit(p: Pick<Project, 'bits' | 'bitOverrides'>, role: BitRole): Bit {
+  const bit = findBit(p.bits[role]!)
+  const o = p.bitOverrides?.[role]
+  return o && Object.keys(o).length ? { ...bit, ...o, name: `${bit.name} (custom)` } : bit
+}
+
+// Why an override can't apply to `bit` (V-bit fields only on V-bits), or null. `flat` is the tip flat's diameter.
+export function overrideError(bit: Bit, o: BitOverride): string | null {
+  const b = { ...bit, ...o }
+  const bad = (v: unknown, min: number, max: number) => typeof v !== 'number' || !Number.isFinite(v) || v < min || v > max
+  if (bad(b.diameter, 0.1, 50)) return 'diameter must be 0.1–50 mm'
+  if (bit.type !== 'vbit') return o.angle !== undefined || o.flat !== undefined ? 'only V-bits have an angle or flat' : null
+  if (bad(b.angle, 10, 170)) return 'angle must be 10–170°'
+  if (bad(b.flat ?? 0, 0, Infinity) || (b.flat ?? 0) >= b.diameter) return 'flat must be at least 0 and less than the diameter'
+  return null
+}
+
 export const findMaterial = (id: string) => MATERIALS.find((m) => m.id === id) ?? MATERIALS[0]
 
 // Material numbers are for a 1/8" bit: feed and plunge scale with diameter (roughly constant chipload), V-bits unscaled.

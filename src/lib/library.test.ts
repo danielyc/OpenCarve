@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { BITS, findBit, findMaterial, MATERIALS, recommendedSettings } from './library'
+import { BITS, effectiveBit, findBit, findMaterial, MACHINES, MATERIALS, overrideError, recommendedSettings } from './library'
 
 const mdf = findMaterial('mdf')
 
@@ -33,4 +33,35 @@ test('library ids are unique and every combination is sane', () => {
       expect(s.stepdown).toBeGreaterThan(0)
       expect(s.plunge).toBeLessThan(s.feed)
     }
+})
+
+test('effectiveBit merges the role override and marks it custom', () => {
+  const bits = { rough: '1/8-endmill', detail: '60-vbit' }
+  expect(effectiveBit({ bits }, 'rough')).toBe(findBit('1/8-endmill'))
+  expect(effectiveBit({ bits, bitOverrides: { rough: {} } }, 'rough')).toBe(findBit('1/8-endmill'))
+  expect(effectiveBit({ bits, bitOverrides: { detail: { angle: 30, flat: 1 } } }, 'detail')).toEqual({
+    ...findBit('60-vbit'),
+    name: '60° V-bit, 1/2" (12.7 mm) (custom)',
+    angle: 30,
+    flat: 1,
+  })
+})
+
+test('overrideError enforces ranges and V-bit-only fields', () => {
+  const end = findBit('1/8-endmill')
+  const v = findBit('90-vbit')
+  expect(overrideError(end, { diameter: 6 })).toBeNull()
+  expect(overrideError(end, { diameter: 0.05 })).toMatch(/diameter/)
+  expect(overrideError(end, { diameter: 51 })).toMatch(/diameter/)
+  expect(overrideError(end, { diameter: NaN })).toMatch(/diameter/)
+  expect(overrideError(end, { angle: 60 })).toMatch(/V-bits/)
+  expect(overrideError(v, { angle: 10, flat: 0 })).toBeNull()
+  expect(overrideError(v, { angle: 171 })).toMatch(/angle/)
+  expect(overrideError(v, { flat: -1 })).toMatch(/flat/)
+  expect(overrideError(v, { diameter: 2, flat: 2 })).toMatch(/flat/)
+})
+
+test('machine presets have unique names and include the TTC450', () => {
+  expect(new Set(MACHINES.map((m) => m.name)).size).toBe(MACHINES.length)
+  expect(MACHINES).toContainEqual({ name: 'TwoTrees TTC450 (500 W)', w: 460, h: 460, maxRpm: 12000 })
 })

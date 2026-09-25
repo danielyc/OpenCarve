@@ -1,4 +1,4 @@
-import { findBit, findMaterial } from '../lib/library'
+import { effectiveBit, findMaterial } from '../lib/library'
 import type { BitRole, CutSettings, Project } from '../model'
 import type { CamResult, Op, Pt3, Segment } from './toolpath'
 
@@ -35,7 +35,7 @@ export function toGcode(result: CamResult, role: BitRole, project: Project): str
   const lines = [
     comment('OpenCarve'),
     comment(`Project: ${project.name}`),
-    comment(`Bit: ${findBit(project.bits[role]!).name}`),
+    comment(`Bit: ${effectiveBit(project, role).name}`),
     comment(`Material: ${findMaterial(project.materialId).name}`),
     comment('Units: mm'),
     'G21 G90 G17 G94',

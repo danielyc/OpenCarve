@@ -376,6 +376,18 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
+.bit-fields {
+  grid-column: 1 / -1;
+}
+
+.bit-fields .note {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
 .field input,
 .field select {
   width: 100%;

@@ -227,6 +227,16 @@ describe('plan and gcode', () => {
     expect(planProject(p).ops.map((o) => o.shapeId)).toEqual(['c', 'b', 'a'])
     expect(r.timeSec.rough).toBeGreaterThan(0)
   })
+  it('uses the overridden bit diameter', () => {
+    const width = (p: Project) => {
+      const xs = planProject(p).ops.find((o) => o.shapeId === 'a')!.segments.flatMap((g) => g.points.filter((q) => q[2] < 0).map((q) => q[0]))
+      return Math.max(...xs) - Math.min(...xs)
+    }
+    const p = { ...sample(), bitOverrides: { rough: { diameter: 6 } } }
+    expect(width(sample())).toBeCloseTo(103.175, 2)
+    expect(width(p)).toBeCloseTo(106, 2)
+    expect(toGcode(planProject(p), 'rough', p)).toContain('; Bit: 1/8" (3.175 mm) endmill (custom)')
+  })
   it('per-op times sum to each bit time', () => {
     const p = project([...sample().shapes, { ...rect(50, 50), id: 'd', x: 150, y: 150, cut: { ...defaultCut(12), type: 'pocket', depth: 3 } }], '6mm-endmill', '1mm-endmill')
     const r = planProject(p)

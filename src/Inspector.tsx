@@ -1,9 +1,9 @@
 import { useId, useState, type ReactNode } from 'react'
 import { FONTS, loadFont } from './lib/fonts'
 import { fitText, localBounds, scaleShape } from './lib/geometry'
-import { BITS, findBit, findMaterial, MACHINES, MATERIALS } from './lib/library'
+import { BITS, effectiveBit, findBit, findMaterial, MACHINES, MATERIALS, overrideError } from './lib/library'
 import { formatLength, mmToIn, parseLength, type Units } from './lib/units'
-import { isOpen, MAX_STEPOVER, tabsActive, type BitRole, type Cut, type Shape } from './model'
+import { isOpen, MAX_STEPOVER, tabsActive, type BitOverride, type BitRole, type Cut, type Shape } from './model'
 import { useAppStore } from './store'
 
 // `live` commits on every keystroke; the whole focus session is a single undo entry.
@@ -279,13 +279,52 @@ export default function Inspector() {
               </option>
             ))}
           </select>
-          {bit && (
-            <small>
-              {BIT_TYPES[bit.type]} · ⌀ {formatLength(bit.diameter, units)} {units}
-              {bit.angle ? ` · ${bit.angle}°` : ''}
-            </small>
-          )}
+          {bit && <small>{BIT_TYPES[bit.type]}</small>}
         </label>
+      )
+    }
+    // Inline edits of the chosen library bit, saved as a per-role override; invalid values revert on blur.
+    const bitOverride = (role: BitRole) => {
+      const id = bits[role]
+      if (!id) return null
+      const lib = findBit(id)
+      const bit = effectiveBit(project, role)
+      const set = (patch: BitOverride) => !overrideError(lib, { ...project.bitOverrides?.[role], ...patch }) && st().setBitOverride(role, patch)
+      const len = (label: string, mm: number, key: 'diameter' | 'flat') => (
+        <Field
+          label={`${label} (${units})`}
+          value={formatLength(mm, units)}
+          onCommit={(t) => {
+            const v = parseLength(t, units)
+            if (v !== null) set({ [key]: v })
+          }}
+        />
+      )
+      return (
+        <div className="fields bit-fields" role="group" aria-label={`${role === 'rough' ? 'Rough' : 'Detail'} dimensions`}>
+          {len('Diameter', bit.diameter, 'diameter')}
+          {lib.type === 'vbit' && (
+            <>
+              <Field
+                label="Angle (°)"
+                value={String(bit.angle)}
+                onCommit={(t) => {
+                  const v = Number(t)
+                  if (t.trim() && Number.isFinite(v)) set({ angle: v })
+                }}
+              />
+              {len('Flat tip diameter', bit.flat ?? 0, 'flat')}
+            </>
+          )}
+          {project.bitOverrides?.[role] && (
+            <p className="note">
+              <span className="badge" title={`Changed from the library ${lib.name}`}>
+                Custom
+              </span>
+              <button onClick={() => st().setBitOverride(role, null)}>Reset</button>
+            </p>
+          )}
+        </div>
       )
     }
     const preset = MACHINES.find((m) => m.name === machine.name)
@@ -324,7 +363,9 @@ export default function Inspector() {
         <Section title="Bits">
           <div className="fields">
             {bitSelect('Rough bit', bits.rough, (rough) => st().setBits({ ...bits, rough }))}
+            {bitOverride('rough')}
             {bitSelect('Detail bit', bits.detail, (detail) => st().setBits({ rough: bits.rough, ...(detail && { detail }) }), true)}
+            {bitOverride('detail')}
           </div>
         </Section>
         <Section title="Material">

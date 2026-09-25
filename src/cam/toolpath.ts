@@ -15,7 +15,7 @@ import {
   type PolyPathD,
 } from 'clipper2-ts'
 import { polylineBounds, shapeToPolylines, tabPositions } from '../lib/geometry'
-import { findBit } from '../lib/library'
+import { effectiveBit } from '../lib/library'
 import { formatLength } from '../lib/units'
 import { MAX_STEPOVER, tabsActive, type BitRole, type Cut, type CutSettings, type Point, type Project, type Shape } from '../model'
 import { opTimes } from './gcode'
@@ -346,11 +346,12 @@ export function planProject(project: Project): CamResult {
   }
   const carved = project.shapes.filter((s) => s.cut)
   const rs = cutSettings.rough
-  const r = findBit(bits.rough).diameter / 2
-  const detailBit = bits.detail ? findBit(bits.detail) : null
+  const roughBit = effectiveBit(project, 'rough')
+  const r = roughBit.diameter / 2
+  const detailBit = bits.detail ? effectiveBit(project, 'detail') : null
   const ds = cutSettings.detail
   const usableDetail = detailBit && ds && detailBit.type !== 'vbit' && detailBit.diameter < 2 * r
-  const vRole: BitRole | null = detailBit?.type === 'vbit' ? 'detail' : findBit(bits.rough).type === 'vbit' ? 'rough' : null
+  const vRole: BitRole | null = detailBit?.type === 'vbit' ? 'detail' : roughBit.type === 'vbit' ? 'rough' : null
 
   for (const shape of carved) {
     const cut = shape.cut!
@@ -374,7 +375,7 @@ export function planProject(project: Project): CamResult {
 
     if (cut.type === 'vcarve') {
       const vs = cutSettings[vRole!]!
-      const k = Math.tan((findBit(bits[vRole!]!).angle! * Math.PI) / 360)
+      const k = Math.tan((effectiveBit(project, vRole!).angle! * Math.PI) / 360)
       const dmax = Math.min(cut.depth, t - 0.5) // never through
       const floor = inflate(region, -dmax * k)
       if (floor.length) {
@@ -382,7 +383,7 @@ export function planProject(project: Project): CamResult {
         // (corners, necks). V-bit rings are 0.4·tan(α/2) apart: ridges of about 0.2 mm, up to ~0.35 mm at corners.
         const vRings = (area: PathsD) => pocketSegments(area, 2 * 0.2 * k, { ...vs, stepover: MAX_STEPOVER }, dmax)
         const oRole: BitRole = vRole === 'rough' ? 'detail' : 'rough'
-        const oBit = bits[oRole] ? findBit(bits[oRole]!) : null
+        const oBit = bits[oRole] ? effectiveBit(project, oRole) : null
         const or = oBit && oBit.type !== 'vbit' && cutSettings[oRole] ? oBit.diameter / 2 : 0
         if (or && inflate(floor, -or).length) {
           push(ops, oRole, 'vcarve-clear', pocketSegments(floor, or, cutSettings[oRole]!, dmax))
