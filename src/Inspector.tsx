@@ -2,7 +2,7 @@ import { useId, useRef, useState, type ReactNode } from 'react'
 import { FontPicker } from './FontPicker'
 import { loadFont } from './lib/fonts'
 import { fitText, localBounds, scaleShape } from './lib/geometry'
-import { BITS, effectiveBit, findBit, findMaterial, MACHINES, MATERIALS, overrideError } from './lib/library'
+import { BITS, effectiveBit, findBit, findMaterial, MACHINES, MATERIALS, overrideError, vbitMaxDepth, vcarveBit } from './lib/library'
 import { formatLength, mmToIn, parseLength, type Units } from './lib/units'
 import { isOpen, MAX_STEPOVER, tabsActive, type BitOverride, type BitRole, type Cut, type Shape, type TextShape } from './model'
 import { useAppStore } from './store'
@@ -98,7 +98,8 @@ function Segmented<T extends string>(props: { label: string; value: string; opti
 }
 
 function CutSection({ selected }: { selected: Shape[] }) {
-  const { stock, bits, units } = useAppStore((s) => s.project)
+  const project = useAppStore((s) => s.project)
+  const { stock, bits, units } = project
   const st = useAppStore.getState
   const ids = selected.map((s) => s.id)
   const t = stock.thickness
@@ -113,7 +114,8 @@ function CutSection({ selected }: { selected: Shape[] }) {
   const vbit = [bits.rough, bits.detail].some((id) => id && findBit(id).type === 'vbit')
   const type = shared((s) => s.cut?.type ?? 'none')
   const vcarve = type === 'vcarve'
-  const maxDepth = vcarve ? t - 0.5 : t
+  const vBit = vcarveBit(project)
+  const maxDepth = vcarve ? Math.min(t - 0.5, vBit ? vbitMaxDepth(vBit) : Infinity) : t
   const through = !vcarve && cuts.every((c) => c && c.depth >= t)
   const depth = cuts[0]?.depth ?? t
   const sameDepth = cuts.every((c) => c?.depth === depth)
@@ -173,7 +175,7 @@ function CutSection({ selected }: { selected: Shape[] }) {
                 onBlur={() => st().commit(slider)}
                 onChange={(e) => {
                   const v = Number(e.target.value)
-                  setCut({ depth: !vcarve && v > t - 0.05 ? t : Math.round(v * 10) / 10 })
+                  setCut({ depth: !vcarve && v > t - 0.05 ? t : Math.min(maxDepth, Math.round(v * 10) / 10) })
                 }}
               />
               {through && <span className="badge">Through</span>}

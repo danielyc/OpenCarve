@@ -1,5 +1,6 @@
 import { beforeEach, expect, test } from 'vitest'
 import { shapeBounds } from './lib/geometry'
+import { findBit, vbitMaxDepth } from './lib/library'
 import { newProject, tabsActive, type Shape } from './model'
 import { useAppStore } from './store'
 
@@ -117,6 +118,16 @@ test('depth and tab sizes are clamped; tabs are kept but only active on a throug
   expect(cut().depth).toBe(11.5) // a V-carve never cuts through
   store().setCut(['a'], null)
   expect(store().project.shapes[0].cut).toBeUndefined()
+})
+
+test('switching to V-carve starts no deeper than the V-bit can cut', () => {
+  store().addShape(rect('a', 10, 10))
+  store().setBits({ rough: '1/8-endmill', detail: '60-vbit' })
+  store().setCut(['a'], { type: 'vcarve' })
+  expect(vbitMaxDepth(findBit('60-vbit'))).toBeCloseTo(11) // 6.35 / tan 30°
+  expect(store().project.shapes[0].cut!.depth).toBeCloseTo(11)
+  store().setCut(['a'], { depth: 11.5 }) // an explicit deeper depth is kept; the planner caps and warns
+  expect(store().project.shapes[0].cut!.depth).toBe(11.5)
 })
 
 test('stock thickness changes clamp depths and keep through cuts through', () => {

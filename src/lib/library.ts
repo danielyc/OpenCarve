@@ -51,6 +51,15 @@ export function effectiveBit(p: Pick<Project, 'bits' | 'bitOverrides'>, role: Bi
   return { ...b, name: `${bit.name} (custom ${bitGeometry(b)})` }
 }
 
+// The V-bit a V-carve uses (the detail role's wins), overrides applied; null without one.
+export function vcarveBit(p: Pick<Project, 'bits' | 'bitOverrides'>): Bit | null {
+  const role = (['detail', 'rough'] as const).find((r) => p.bits[r] && findBit(p.bits[r]).type === 'vbit')
+  return role ? effectiveBit(p, role) : null
+}
+
+// Deepest a V-bit can cut before its shank's straight side would cut the walls: (D/2 − flat/2) / tan(angle/2).
+export const vbitMaxDepth = (b: Bit) => (b.diameter / 2 - (b.flat ?? 0) / 2) / Math.tan((b.angle! * Math.PI) / 360)
+
 // Why an override can't apply to `bit` (V-bit fields only on V-bits), or null. `flat` is the tip flat's diameter.
 // Every supplied field must be a finite number; absent fields keep the library value.
 export function overrideError(bit: Bit, o: BitOverride): string | null {

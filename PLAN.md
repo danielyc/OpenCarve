@@ -38,8 +38,14 @@ All ten steps are done.
 9. Persistence: IndexedDB autosave, home screen with project list, `.opencarve` open/save.
 10. Polish: full-flow e2e, README, CI and GitHub Pages workflows, relative build paths, tool shortcuts and shortcut help, page title.
 
+v1.1 steps 11–14 are done too.
+11. Toolpath animation: tool model on a G-code-order timeline with play/pause, speed, scrub and optional progressive material removal; the view frames the stock above the playback bar.
+12. Machine preset + bit overrides: TTC450 preset; per-role diameter/angle/flat overrides; V-carve depth defaults to and the slider stops at the V-bit's max depth.
+13. Text controls: letter spacing, multi-line with line height and alignment, bend, mirror.
+14. Fonts: 16 bundled OFL fonts, uploaded TTF/OTF (stored in the browser and embedded in project files), Google Fonts via Fontsource.
+
 ### Known limitations
-- Text is single-line, with no ligatures or complex-script shaping.
+- Text has no ligatures or complex-script shaping.
 - SVG import ignores `<use>`, `<text>` and CSS styling.
 - V-carve floors can show ridges of about 0.2 mm.
 - No ramped entries: every depth pass plunges straight down.
@@ -50,6 +56,11 @@ All ten steps are done.
 - The time estimate ignores acceleration, so real jobs take longer.
 - The detail bit only rest-machines pockets and V-carve floors (outlines always use the rough bit).
 - Tested in Chromium only.
+- Through-cut holes don't show in the 3D preview mid-playback (only in the finished result).
+- Google Fonts are downloaded as the Latin subset only.
+- Removing an uploaded font only checks saved projects for use, not unsaved ones open in other tabs.
+- V-carve details narrower than the V-bit's flat tip are skipped, with a warning.
+- A V-carve depth typed past the V-bit's max depth (or loaded from a file) is capped by the planner, with a warning.
 
 ## v1.1 — requested 2026-09-25
 Decisions: animation = tool model travelling the path in the 3D preview with play/pause, speed, scrub, and a *toggle* for progressive material removal. TTC450 (500 W, 12,000 RPM, 460×460) preset. Text: letter spacing, arc text, multi-line + alignment, mirror. Bits: inline override of diameter / V angle / flat on library bits, saved in the project, "Custom" badge + reset. Fonts: ~12 more bundled OFL fonts, upload your own TTF/OTF (browser + embedded in the project file), and on-demand Google Fonts via the Fontsource TTF CDN (api.fontsource.org index, cdn.jsdelivr.net/fontsource TTF files; cached in IndexedDB).

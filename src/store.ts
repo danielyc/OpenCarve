@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { CamResult } from './cam/toolpath'
 import { onFontLoad } from './lib/fonts'
 import { polylineBounds, shapeBounds, shapeToPolylines } from './lib/geometry'
-import { differingFields, effectiveBit, findBit, findMaterial, overrideError, recommendedSettings } from './lib/library'
+import { differingFields, effectiveBit, findBit, findMaterial, overrideError, recommendedSettings, vbitMaxDepth, vcarveBit } from './lib/library'
 import type { Units } from './lib/units'
 import type { SimResult } from './preview/sim'
 import { defaultCut, newId, newProject, validCut, type BitOverride, type BitRole, type Cut, type CutSettings, type Project, type Shape, type ShapePatch } from './model'
@@ -277,11 +277,16 @@ export const useAppStore = create<AppState>()((set, get) => {
     setCut: (ids, patch) =>
       setProject((p) => {
         const t = p.stock.thickness
+        const vbit = vcarveBit(p)
+        const cut = (s: Shape, patch: Partial<Cut>) => {
+          const c = { ...(s.cut ?? defaultCut(t)), ...patch }
+          // Becoming a V-carve: start no deeper than the V-bit can cut, so a default project doesn't warn.
+          if (patch.type === 'vcarve' && s.cut?.type !== 'vcarve' && vbit) c.depth = Math.min(c.depth, vbitMaxDepth(vbit))
+          return validCut(s, c, t)
+        }
         return {
           ...p,
-          shapes: p.shapes.map((s) =>
-            !ids.includes(s.id) ? s : { ...s, cut: patch ? validCut(s, { ...(s.cut ?? defaultCut(t)), ...patch }, t) : undefined },
-          ),
+          shapes: p.shapes.map((s) => (!ids.includes(s.id) ? s : { ...s, cut: patch ? cut(s, patch) : undefined })),
         }
       }),
     setUnits: (units) => set((s) => ({ project: { ...s.project, units } })),

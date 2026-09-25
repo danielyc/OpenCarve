@@ -15,7 +15,7 @@ import {
   type PolyPathD,
 } from 'clipper2-ts'
 import { polylineBounds, shapeToPolylines, tabPositions } from '../lib/geometry'
-import { effectiveBit } from '../lib/library'
+import { effectiveBit, vbitMaxDepth } from '../lib/library'
 import { formatLength } from '../lib/units'
 import { MAX_STEPOVER, tabsActive, type BitRole, type Cut, type CutSettings, type Point, type Project, type Shape } from '../model'
 import { opTimes } from './gcode'
@@ -384,7 +384,7 @@ export function planProject(project: Project): CamResult {
       const vBit = effectiveBit(project, vRole!)
       const k = Math.tan((vBit.angle! * Math.PI) / 360)
       const f = (vBit.flat ?? 0) / 2 // Bit.flat is a diameter
-      const coneDepth = (vBit.diameter / 2 - f) / k // deeper, the shank's straight side would cut the walls
+      const coneDepth = vbitMaxDepth(vBit) // the UI clamps to this; files and bit edits can still exceed it
       const dmax = Math.min(cut.depth, t - 0.5, coneDepth) // never through
       if (coneDepth < Math.min(cut.depth, t - 0.5))
         warnings.push(`${shape.name}: max depth limited to ${+formatLength(coneDepth, project.units)} ${project.units} by the V-bit's diameter`)

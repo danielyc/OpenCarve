@@ -27,11 +27,28 @@ interface View {
   render: () => void
   materials: Record<'surface' | 'sides' | 'hidden' | 'lines' | 'linesDim' | 'cutter' | 'shank', THREE.Material>
   radius: number // of the stock's bounding sphere, for framing
+  bar: number // px of canvas covered by the playback bar
+}
+
+const PLAYBACK_H = 64 // --playback-h in styles.css
+
+// Fits the projection to the canvas part above the playback bar: the view centres there and the canvas strip under
+// the bar shows extra scene, so the stock's front edge isn't hidden behind it.
+function project(view: View) {
+  const { camera, renderer } = view
+  const { x: w, y: h } = renderer.getSize(new view.T.Vector2())
+  if (!w || !h) return
+  const above = Math.max(1, h - view.bar)
+  camera.aspect = w / above
+  if (view.bar) camera.setViewOffset(w, above, 0, 0, w, h)
+  else camera.clearViewOffset()
+  camera.updateProjectionMatrix()
 }
 
 // Looks at the stock centre from VIEW_DIR, far enough back that its bounding sphere fits the view.
 function frame(view: View) {
   const { T, camera, controls } = view
+  project(view)
   const vfov = (camera.fov * Math.PI) / 180
   const fov = Math.min(vfov, 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect))
   const dir = new T.Vector3(...VIEW_DIR).normalize()
@@ -132,7 +149,7 @@ async function createView(host: HTMLElement): Promise<View> {
   }
   const render = () => renderer.render(scene, camera)
   controls.addEventListener('change', render)
-  return { T, renderer, scene, camera, controls, render, materials, radius: 0 }
+  return { T, renderer, scene, camera, controls, render, materials, radius: 0, bar: 0 }
 }
 
 export default function Preview3D() {
@@ -221,13 +238,12 @@ export default function Preview3D() {
           v.renderer.domElement.remove()
           return
         }
-        const { renderer, camera, scene, controls, materials } = v
+        const { renderer, scene, controls, materials } = v
         const resize = () => {
           const { clientWidth: w, clientHeight: h } = host
           if (!w || !h) return
           renderer.setSize(w, h, false)
-          camera.aspect = w / h
-          camera.updateProjectionMatrix()
+          project(v)
           v.render()
         }
         resize()
@@ -382,6 +398,15 @@ export default function Preview3D() {
     return () => cancelAnimationFrame(raf)
   }, [playing, sync])
 
+  const playback = step === 'simulate' && !!tl?.moves.length
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view) return
+    view.bar = playback ? PLAYBACK_H : 0
+    project(view)
+    view.render()
+  }, [ready, playback])
+
   const resetView = () => {
     const view = viewRef.current
     if (!view) return
@@ -392,7 +417,7 @@ export default function Preview3D() {
   }
 
   return (
-    <section className={step === 'simulate' && tl?.moves.length ? 'preview3d has-playback' : 'preview3d'} aria-label="3D preview">
+    <section className={playback ? 'preview3d has-playback' : 'preview3d'} aria-label="3D preview">
       <div ref={hostRef} className="preview3d-host" />
       {failed ? (
         <p className="preview3d-error">3D preview unavailable (WebGL not supported)</p>
@@ -415,7 +440,7 @@ export default function Preview3D() {
           <span className="swatch vcarve">V-carve</span>
         </div>
       )}
-      {step === 'simulate' && cam && tl?.moves.length ? <PlaybackBar tl={tl} ops={cam.ops} /> : null}
+      {playback && cam ? <PlaybackBar tl={tl} ops={cam.ops} /> : null}
     </section>
   )
 }

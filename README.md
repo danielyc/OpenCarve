@@ -5,12 +5,15 @@ Free, open-source (AGPL-3.0) design and toolpath software for hobby CNC routers,
 ## Features
 
 - **Design**: rectangle, ellipse, polygon, pen (lines and closed paths) and text tools; move, scale, rotate, align, duplicate, nudge, undo/redo.
-- **Text** with 16 bundled fonts, your own uploaded TTF/OTF fonts, and Google Fonts on demand (see [Fonts](#fonts)).
+- **Text** with 16 bundled fonts, your own uploaded TTF/OTF fonts, and Google Fonts on demand via Fontsource (see [Fonts](#fonts)); multi-line text with left/centre/right alignment and line height, letter spacing, bend (arc text) and mirror.
 - **SVG import**: paths, basic shapes, transforms and groups (use Import or drop a file onto the editor).
 - **Materials, bits and cut settings**: pick a material and bits; feed, plunge, stepdown and RPM are filled in with recommended values you can override.
+- **Bit overrides**: adjust a library bit's diameter, and a V-bit's angle and flat tip, to match the bit you actually have. Overrides are saved in the project, marked "Custom" and can be reset; recommended settings follow the adjusted bit.
+- **Machine presets**: Generic GRBL, 3018, Onefinity Woodworker, Shapeoko 4 XL/XXL, TwoTrees TTC450 (500 W), X-Carve 750/1000, or a custom work area and max RPM.
 - **Cuts**: outline (outside, inside or on the path, with tabs), pocket and V-carve.
 - **Two-stage carves**: a rough bit cuts outlines and clears pockets. An optional detail bit only rest-machines what the rough bit can't reach in pockets and V-carve floors; a V-bit as the detail bit also cuts the V-carves.
 - **Simulate**: toolpaths on the 2D canvas, a 3D preview of the carved result, warnings and an estimated time.
+- **Toolpath animation**: watch a model of the bit run the job in the 3D preview in G-code order, with play/pause, 1×–50× speed and a scrub bar, and optionally see the material removed as it goes.
 - **Export** G-code for GRBL-compatible machines, one file per bit.
 - **Autosave** in the browser, a project list, and `.opencarve` files to save, share and back up projects.
 
