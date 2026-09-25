@@ -5,7 +5,8 @@ import { BITS, differingFields, effectiveBit, findBit, findMaterial, MATERIALS, 
 // A self-contained, versioned document: the same JSON is the download format and the IndexedDB record,
 // so a sync backend can store it verbatim later.
 export const FILE_FORMAT = 'opencarve'
-export const FILE_VERSION = 1
+// v2 added the work zero (origin). Older builds refuse v2 files rather than dropping the zero and cutting shifted.
+export const FILE_VERSION = 2
 
 export type EmbeddedFonts = Record<string, Omit<StoredFont, 'id'>>
 
@@ -186,15 +187,16 @@ function overrides(v: unknown, bits: Project['bits'], warnings: string[]): NonNu
   return out
 }
 
+// Absent (older files) means the default zero; a supplied one must be complete, since a wrong zero cuts in the wrong place.
 // Presets follow the stock; a custom zero outside the stock is pulled back onto it with a warning.
 function origin(v: unknown, stock: Project['stock'], d: Origin, warnings: string[]): Origin {
   if (v === undefined) return d
   const o = obj(v, 'origin')
   const raw: Origin = {
-    preset: oneOf(o, 'preset', 'origin', ['bottom-left', 'bottom-right', 'top-left', 'top-right', 'center', 'custom'] as const, d.preset),
-    x: num(o, 'x', 'origin', d.x),
-    y: num(o, 'y', 'origin', d.y),
-    z: oneOf(o, 'z', 'origin', ['top', 'bottom'] as const, d.z),
+    preset: oneOf(o, 'preset', 'origin', ['bottom-left', 'bottom-right', 'top-left', 'top-right', 'center', 'custom'] as const),
+    x: num(o, 'x', 'origin'),
+    y: num(o, 'y', 'origin'),
+    z: oneOf(o, 'z', 'origin', ['top', 'bottom'] as const),
   }
   const fit = fitOrigin(raw, stock)
   if (raw.preset === 'custom' && (fit.x !== raw.x || fit.y !== raw.y)) warnings.push(`Work zero was outside the stock; moved to (${fit.x}, ${fit.y}) mm.`)
@@ -249,7 +251,7 @@ export async function parseProjectFile(
 function projectFromData(data: unknown, warnings: string[]): Project {
   const file = obj(data, 'file')
   if (file.format !== FILE_FORMAT) fail('not an OpenCarve project')
-  if (file.version !== FILE_VERSION) fail(`unsupported version ${String(file.version)} (this app reads version ${FILE_VERSION})`)
+  if (file.version !== 1 && file.version !== FILE_VERSION) fail(`unsupported version ${String(file.version)} (this app reads versions 1 to ${FILE_VERSION})`)
   const p = obj(file.project, 'project')
   const d = newProject()
 

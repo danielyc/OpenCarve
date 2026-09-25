@@ -301,7 +301,10 @@ describe('work zero', () => {
   it('centre zero shifts every move by (-50, -25)', () => {
     const base = gcode(small({}))
     const centre = gcode(small({ preset: 'center', x: 50, y: 25 }))
-    expect(words(base, 'X').length).toBeGreaterThan(0)
+    for (const axis of ['X', 'Y', 'Z']) {
+      expect(words(base, axis).length).toBeGreaterThan(2)
+      expect(words(centre, axis)).toHaveLength(words(base, axis).length)
+    }
     words(centre, 'X').forEach((x, i) => expect(x).toBeCloseTo(words(base, 'X')[i] - 50, 3))
     words(centre, 'Y').forEach((y, i) => expect(y).toBeCloseTo(words(base, 'Y')[i] - 25, 3))
     expect(words(centre, 'Z')).toEqual(words(base, 'Z'))
@@ -319,6 +322,7 @@ describe('work zero', () => {
     expect(bottom.split('\n')).not.toContain(`G0 Z${safe}`)
     const zt = words(top, 'Z')
     expect(zt.length).toBeGreaterThan(2)
+    for (const axis of ['X', 'Y', 'Z']) expect(words(bottom, axis)).toHaveLength(words(top, axis).length)
     words(bottom, 'Z').forEach((z, i) => expect(z).toBeCloseTo(zt[i] + 12, 3))
     expect(words(bottom, 'X')).toEqual(words(top, 'X'))
     expect(bottom).toContain('; Z zero: bottom of stock (spoilboard)')

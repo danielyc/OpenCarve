@@ -50,7 +50,7 @@ test('saves as a .opencarve file', async ({ page }) => {
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Save as file' }).click()])
   expect(download.suggestedFilename()).toBe('Test.opencarve')
   const json = JSON.parse(Buffer.concat(await (await download.createReadStream()).toArray()).toString())
-  expect(json).toMatchObject({ format: 'opencarve', version: 1, project: { name: 'Test', shapes: [{ type: 'rect' }] } })
+  expect(json).toMatchObject({ format: 'opencarve', version: 2, project: { name: 'Test', shapes: [{ type: 'rect' }] } })
 })
 
 test('opens a .opencarve file with text and plans its toolpaths', async ({ page }) => {

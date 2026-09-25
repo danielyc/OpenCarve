@@ -19,7 +19,7 @@ const sample = (): Project => ({
   ],
 })
 
-const file = (project: unknown, extra = {}) => JSON.stringify({ format: 'opencarve', version: 1, project, ...extra })
+const file = (project: unknown, extra = {}) => JSON.stringify({ format: 'opencarve', version: 2, project, ...extra })
 
 test('round-trips a project', () => {
   const p = sample()
@@ -28,9 +28,11 @@ test('round-trips a project', () => {
 
 test('work zero: round-trips, defaults for old files, validates and clamps', () => {
   const p = { ...sample(), origin: { preset: 'custom' as const, x: 12.5, y: 40, z: 'bottom' as const } }
+  expect(JSON.parse(serializeProject(p)).version).toBe(2)
   expect(parseProject(serializeProject(p))).toEqual(p)
   const old: Partial<Project> = sample()
   delete old.origin
+  expect(parseProject(file(old, { version: 1 })).origin).toEqual({ preset: 'bottom-left', x: 0, y: 0, z: 'top' })
   expect(parseProject(file(old)).origin).toEqual({ preset: 'bottom-left', x: 0, y: 0, z: 'top' })
   // Presets are re-derived from the stock.
   expect(parseProject(file({ ...old, origin: { preset: 'center', x: 1, y: 2, z: 'top' } })).origin).toMatchObject({ x: 150, y: 100 })
@@ -39,13 +41,18 @@ test('work zero: round-trips, defaults for old files, validates and clamps', () 
   expect(warnings).toEqual(['Work zero was outside the stock; moved to (0, 200) mm.'])
   expect(() => parseProject(file({ ...old, origin: { preset: 'middle' } }))).toThrow(/origin.preset/)
   expect(() => parseProject(file({ ...old, origin: { preset: 'custom', x: 'a' } }))).toThrow(/origin.x/)
-  expect(() => parseProject(file({ ...old, origin: { z: 'side' } }))).toThrow(/origin.z/)
+  const full = { preset: 'custom', x: 1, y: 2, z: 'top' }
+  expect(() => parseProject(file({ ...old, origin: { ...full, z: 'side' } }))).toThrow(/origin.z/)
+  expect(() => parseProject(file({ ...old, origin: { ...full, x: null } }))).toThrow('Invalid project file: origin.x must be a number')
+  expect(() => parseProject(file({ ...old, origin: { ...full, preset: undefined } }))).toThrow(/origin.preset must be one of/)
+  expect(() => parseProject(file({ ...old, origin: { ...full, z: undefined } }))).toThrow(/origin.z must be one of/)
+  expect(() => parseProject(file({ ...old, origin: null }))).toThrow(/origin must be an object/)
 })
 
 test('rejects garbage', () => {
   expect(() => parseProject('not json')).toThrow(/not JSON/)
   expect(() => parseProject('{"format":"svg"}')).toThrow(/not an OpenCarve project/)
-  expect(() => parseProject(file(sample(), { version: 2 }))).toThrow(/unsupported version 2/)
+  expect(() => parseProject(file(sample(), { version: 3 }))).toThrow('Invalid project file: unsupported version 3 (this app reads versions 1 to 2)')
   expect(() => parseProject(file({ ...sample(), shapes: 'x' }))).toThrow(/shapes must be an array/)
   expect(() => parseProject(file({ ...sample(), stock: { w: NaN, h: 1, thickness: 1 } }))).toThrow(/stock.w/)
   expect(() => parseProject(file({ ...sample(), shapes: [{ id: 'z', type: 'blob', x: 0, y: 0 }] }))).toThrow(/shapes\[0\].type/)
