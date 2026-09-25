@@ -45,6 +45,7 @@ export function limiter(max: number) {
 const run = limiter(6)
 const started = new Map<string, Promise<boolean>>()
 const ready = new Set<string>()
+const failed = new Set<string>()
 const interest = new Map<string, number>()
 let warned = false
 
@@ -76,6 +77,7 @@ function loadPreview(id: string): Promise<boolean> {
         return !!ok
       },
       (e) => {
+        failed.add(id)
         if (!warned) console.debug('Font preview failed', id, e)
         warned = true
         return false
@@ -84,6 +86,22 @@ function loadPreview(id: string): Promise<boolean> {
     started.set(id, p)
   }
   return p
+}
+
+// Lets failed previews load again (the "Preview fonts" toggle switched on).
+export function retryFailedPreviews() {
+  for (const id of failed) started.delete(id)
+  failed.clear()
+}
+
+// A removed uploaded font's preview face is unregistered too.
+export function forgetPreview(id: string) {
+  const fonts = globalThis.document?.fonts
+  const family = previewFamily(id)
+  if (fonts) for (const face of [...fonts]) if (face.family.replace(/"/g, '') === family) fonts.delete(face)
+  started.delete(id)
+  ready.delete(id)
+  failed.delete(id)
 }
 
 // Ref + preview state for an element showing font `id`; loads while the element is in view and `enabled`.

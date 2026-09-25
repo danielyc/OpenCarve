@@ -2,6 +2,7 @@ import { del, get, set, update } from 'idb-keyval'
 import { newId, newProject, type Project, type TextShape } from '../model'
 import { useAppStore } from '../store'
 import { FONTS, forgetFont, getUploadedFont, loadFont, removeUploadedFont, storeUploadedFont } from './fonts'
+import { forgetPreview } from './fontPreview'
 import { fitText } from './geometry'
 import { parseProjectFile, serializeProject, uploadedFontIds, type EmbeddedFonts } from './projectFile'
 
@@ -199,6 +200,7 @@ export async function removeFont(fontId: string): Promise<{ blockedBy: string[];
   if (blockedBy.length) return { blockedBy, fellBack: 0 }
   await removeUploadedFont(fontId)
   forgetFont(fontId)
+  forgetPreview(fontId)
   const ids = st.project.shapes.filter((s) => s.type === 'text' && s.font === fontId).map((s) => s.id)
   if (ids.length) {
     const refit = (await loadFont(FONTS[0].id).then(() => true, () => false)) ? fitText : (t: TextShape) => t

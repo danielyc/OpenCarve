@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { CATEGORIES, FONTS, fontsourceIndex, fontSource, listUploadedFonts, missingGlyphs, uploadFont, type FontEntry, type FsFont } from './lib/fonts'
-import { useFontPreview } from './lib/fontPreview'
+import { retryFailedPreviews, useFontPreview } from './lib/fontPreview'
 import { fontUsers, removeFont } from './lib/persist'
 import { useAppStore } from './store'
 
@@ -34,8 +34,7 @@ export function FontPicker({ value, text, onChange }: { value: string; text: str
   const [browsing, setBrowsing] = useState(false)
   const [previewGoogle, setPreviewGoogle] = useState(storedPreview)
   const previews = (id: string) => previewGoogle || !id.startsWith('fs:')
-  const triggerPreview = useFontPreview<HTMLButtonElement>(value, previews(value))
-  const trigger = triggerPreview.ref
+  const trigger = useRef<HTMLButtonElement>(null)
   const wrapper = useRef<HTMLDivElement>(null)
   const panel = useRef<HTMLDivElement>(null)
   const file = useRef<HTMLInputElement>(null)
@@ -118,6 +117,7 @@ export function FontPicker({ value, text, onChange }: { value: string; text: str
   }
 
   const togglePreview = (on: boolean) => {
+    if (on) retryFailedPreviews()
     setPreviewGoogle(on)
     try {
       localStorage.setItem(PREVIEW_KEY, on ? 'on' : 'off')
@@ -130,7 +130,7 @@ export function FontPicker({ value, text, onChange }: { value: string; text: str
   return (
     <div ref={wrapper} className="field wide font-picker" onKeyDown={onKeyDown}>
       <span>Font</span>
-      <button {...triggerPreview} className="font-trigger" aria-label={`Font: ${label}`} aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button ref={trigger} className="font-trigger" aria-label={`Font: ${label}`} aria-expanded={open} onClick={() => setOpen(!open)}>
         {label}
       </button>
       {missing.length > 0 && (
@@ -180,11 +180,16 @@ export function FontPicker({ value, text, onChange }: { value: string; text: str
 }
 
 function FontRow({ row: r, selected, preview, onChoose, onRemove }: { row: Row; selected: boolean; preview: boolean; onChoose: (id: string) => void; onRemove: (f: FontEntry) => void }) {
-  const p = useFontPreview<HTMLButtonElement>(r.id, preview)
+  const sample = useFontPreview<HTMLSpanElement>(r.id, preview)
   return (
     <div className="font-row">
-      <button {...p} data-font aria-pressed={selected} onClick={() => onChoose(r.id)}>
-        {r.name} <small>{r.meta}</small>
+      <button data-font aria-pressed={selected} onClick={() => onChoose(r.id)}>
+        {/* The name stays in the UI font: symbol and barcode fonts would draw it as glyphs. */}
+        {r.name}{' '}
+        <span {...sample} className="font-sample" aria-hidden>
+          Abc 123
+        </span>{' '}
+        <small>{r.meta}</small>
       </button>
       {r.id.startsWith('upload:') && (
         <button className="font-remove" aria-label={`Remove ${r.name}`} onClick={() => void onRemove({ id: r.id, name: r.name })}>

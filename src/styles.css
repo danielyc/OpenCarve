@@ -1275,10 +1275,6 @@ input.project-name {
 .font-trigger {
   padding: 5px 7px;
   font-size: 13px;
-  line-height: 18px; /* fixed so a preview font doesn't change the height */
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
   text-align: left;
   color: var(--text);
   border: 1px solid var(--border);
@@ -1360,8 +1356,8 @@ input.project-name {
   background: var(--bg);
 }
 
-.font-row small {
-  font-family: var(--ui-font);
+.font-row small,
+.font-sample {
   color: var(--muted);
 }
 
