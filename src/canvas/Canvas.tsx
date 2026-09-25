@@ -155,10 +155,9 @@ export default function Canvas() {
   const status = useAppStore((s) => s.status)
   const step = useAppStore((s) => s.step)
   const cam = useAppStore((s) => (s.step === 'simulate' ? s.cam : null))
-  // Tabs come from the planner; the last result stays up while a new one is planned (a reopened project has none yet).
+  // Tab marks come from the planner: dimmed while a new plan is on its way, gone for shapes changed since the plan.
   const planned = useAppStore((s) => s.cam)
-  const [planKnown, setPlanKnown] = useState(planned)
-  if (planned && planned !== planKnown) setPlanKnown(planned)
+  const camBusy = useAppStore((s) => s.camBusy)
   const highlight = useAppStore((s) => s.highlightOp)
   const [showRapids, setShowRapids] = useState(false)
   const hl = cam?.ops.find((o) => opKey(o) === highlight && selection.includes(o.shapeId))
@@ -435,8 +434,8 @@ export default function Canvas() {
             const cls = selection.includes(s.id) ? 'selected' : hover === s.id ? 'hover' : ''
             const { cut } = s
             // Tab marks sit on the tool-centre loop, where the planner put them.
-            const tabs = cut && tabsActive(cut, stock.thickness) ? (planKnown?.ops ?? []).filter((o) => o.shapeId === s.id).flatMap((o) => o.tabs ?? []) : []
-            const w = (cut?.tabWidth ?? 0) / 2
+            const current = planned?.shapes?.includes(s) && cut && tabsActive(cut, stock.thickness)
+            const tabs = current ? planned!.ops.filter((o) => o.shapeId === s.id).flatMap((o) => o.tabs ?? []) : []
             return (
               <g key={s.id} data-id={s.id} data-cut={cut?.type ?? 'none'} data-side={cut?.type === 'outline' ? cut.side : undefined} className={`shape ${cls}`}>
                 <path className="hit" d={pathD(polys)} />
@@ -448,9 +447,9 @@ export default function Canvas() {
                     fillRule: s.fillRule,
                   }}
                 />
-                {tabs.map(({ x, y, angle }, i) => {
-                  const [tx, ty] = [Math.cos(angle) * w, Math.sin(angle) * w]
-                  return <path key={i} data-tab className="tab" d={`M${x - tx} ${y - ty}L${x + tx} ${y + ty}`} />
+                {tabs.map(({ x, y, angle, width }, i) => {
+                  const [tx, ty] = [(Math.cos(angle) * width) / 2, (Math.sin(angle) * width) / 2]
+                  return <path key={i} data-tab className="tab" opacity={camBusy ? 0.4 : undefined} d={`M${x - tx} ${y - ty}L${x + tx} ${y + ty}`} />
                 })}
               </g>
             )

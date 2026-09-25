@@ -36,12 +36,13 @@ export interface Op {
   tabs?: Tab[] // outline ops with tabs
   timeSec?: number // set by planProject
 }
-// A tab's middle on the tool-centre loop and the loop's direction there (radians from +X).
-export type Tab = { x: number; y: number; angle: number }
+// A tab's middle on the tool-centre loop, the loop's direction there (radians from +X) and its raised length.
+export type Tab = { x: number; y: number; angle: number; width: number }
 export const opKey = (o: Op) => `${o.shapeId}:${o.kind}:${o.role}`
 
 export interface CamResult {
   ops: Op[]
+  shapes?: Shape[] // the project's shapes it was planned from (set on the main thread; the worker only sees copies)
   warnings: string[]
   timeSec: Record<BitRole, number>
 }
@@ -134,7 +135,7 @@ export function loopTabs(pts: Point[], count: number, longest: number, width: nu
     const j = Math.max(1, cum.findIndex((a) => a >= c))
     const [a, b] = [pts[j - 1], pts[j]]
     const [x, y] = lerpPt(a, b, cum[j] > cum[j - 1] ? (c - cum[j - 1]) / (cum[j] - cum[j - 1]) : 0)
-    return { x, y, angle: Math.atan2(b[1] - a[1], b[0] - a[0]) }
+    return { x, y, angle: Math.atan2(b[1] - a[1], b[0] - a[0]), width: w }
   })
   return { centres, width: w, tabs }
 }
@@ -416,9 +417,10 @@ export function planProject(project: Project): CamResult {
       const longest = Math.max(...loops.map((l) => arcLengths(l).at(-1)!))
       const tabs: Tab[] = []
       const L = linker(rs.safeZ)
-      loops.forEach((pts) => {
+      loops.forEach((pts, k) => {
         const lt = tabZ === null ? null : loopTabs(pts, cut.tabCount, longest, cut.tabWidth)
-        if (lt && !lt.centres.length) warnings.push(`Loop too small for a tab in ${shape.name}`)
+        if (lt && !lt.centres.length)
+          warnings.push(cut.side === 'outside' && areaD(paths[k]) > 0 ? `A piece of ${shape.name} is too small for a tab and will come loose` : `Loop too small for a tab in ${shape.name}`)
         tabs.push(...(lt?.tabs ?? []))
         zs.forEach((z, i) => {
           const pass = lt?.centres.length && z < tabZ! ? withTabs(pts, z, tabZ!, lt.centres, lt.width) : pts.map((p): Pt3 => [...p, z])

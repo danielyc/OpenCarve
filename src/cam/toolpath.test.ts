@@ -408,40 +408,54 @@ describe('tabs on every cut loop', () => {
   }
   const loopIndex = (pt: Point, loops: PathsD) => loops.findIndex((l) => onLoop(pt, l).d < 0.01)
   // Runs of feed moves raised to the tab height, each with its middle by arc length.
-  const raised = (op: Op) => {
-    const pts = op.segments.filter((s) => !s.rapid).flatMap((s) => s.points)
-    const runs: Pt3[][] = []
-    pts.forEach((q, i) => {
-      if (q[2] !== TAB_Z) return
-      if (pts[i - 1]?.[2] !== TAB_Z) runs.push([])
-      runs.at(-1)!.push(q)
-    })
-    return runs.map((run) => {
-      const cum = run.map((_, i) => run.slice(1, i + 1).reduce((a, q, j) => a + Math.hypot(q[0] - run[j][0], q[1] - run[j][1]), 0))
-      const half = cum.at(-1)! / 2
-      const j = Math.max(1, cum.findIndex((c) => c >= half))
-      const t = cum[j] > cum[j - 1] ? (half - cum[j - 1]) / (cum[j] - cum[j - 1]) : 0
-      const mid: Point = [run[j - 1][0] + (run[j][0] - run[j - 1][0]) * t, run[j - 1][1] + (run[j][1] - run[j - 1][1]) * t]
-      return { run, mid }
-    })
-  }
+  // Each loop pass is one feed segment; returns its depth and its runs raised to the tab height, with their middles.
+  const passes = (op: Op) =>
+    op.segments
+      .filter((s) => !s.rapid && s.points.length > 2)
+      .map(({ points }) => {
+        const runs: Pt3[][] = []
+        points.forEach((q, i) => {
+          if (q[2] !== TAB_Z) return
+          if (points[i - 1]?.[2] !== TAB_Z) runs.push([])
+          runs.at(-1)!.push(q)
+        })
+        const raised = runs.map((run) => {
+          const cum = run.map((_, i) => run.slice(1, i + 1).reduce((a, q, j) => a + Math.hypot(q[0] - run[j][0], q[1] - run[j][1]), 0))
+          const half = cum.at(-1)! / 2
+          const j = Math.max(1, cum.findIndex((c) => c >= half))
+          const t = cum[j] > cum[j - 1] ? (half - cum[j - 1]) / (cum[j] - cum[j - 1]) : 0
+          const mid: Point = [run[j - 1][0] + (run[j][0] - run[j - 1][0]) * t, run[j - 1][1] + (run[j][1] - run[j - 1][1]) * t]
+          return { run, mid, length: cum.at(-1)! }
+        })
+        return { points, z: Math.min(...points.map((q) => q[2])), raised }
+      })
+  const raised = (op: Op) => passes(op).flatMap((p) => p.raised)
   const plan = (shape: Shape) => {
     const res = planProject(project([shape]))
     const op = res.ops.find((o) => o.shapeId === shape.id)!
     const loops = outlinePaths(shapeRegion(shape), shape.cut!.side, shape.cut!.side === 'on' ? 0 : R)
     return { res, op, loops, tabs: (op.tabs ?? []).map((t): Point => [t.x, t.y]) }
   }
-  // Every raised run lies on one cut loop, and the raises match op.tabs.
+  // On every pass deeper than the tab height, each loop is raised exactly at its own op.tabs; shallower passes aren't.
   const assertRaisesMatchTabs = (op: Op, loops: PathsD, tabs: Point[]) => {
-    const mids = raised(op)
-    expect(mids.length).toBeGreaterThan(0)
-    for (const { run, mid } of mids) {
-      const k = loopIndex([run[0][0], run[0][1]], loops)
+    const deep = new Map<number, number>()
+    for (const { points, z, raised } of passes(op)) {
+      const k = loopIndex([points[0][0], points[0][1]], loops)
       expect(k).toBeGreaterThanOrEqual(0)
-      for (const q of run) expect(onLoop([q[0], q[1]], loops[k]).d).toBeLessThan(0.01)
-      expect(Math.min(...tabs.map((t) => Math.hypot(t[0] - mid[0], t[1] - mid[1])))).toBeLessThan(0.5)
+      const mine = tabs.filter((t) => loopIndex(t, loops) === k)
+      if (z >= TAB_Z) {
+        expect(raised).toHaveLength(0)
+        continue
+      }
+      deep.set(k, (deep.get(k) ?? 0) + 1)
+      expect(raised).toHaveLength(mine.length)
+      for (const { run, mid } of raised) {
+        for (const q of run) expect(onLoop([q[0], q[1]], loops[k]).d).toBeLessThan(0.01)
+        expect(Math.min(...mine.map((t) => Math.hypot(t[0] - mid[0], t[1] - mid[1])))).toBeLessThan(0.5)
+      }
     }
-    for (const t of tabs) expect(Math.min(...mids.map(({ mid }) => Math.hypot(t[0] - mid[0], t[1] - mid[1])))).toBeLessThan(0.5)
+    const expected = zLevels(12, project([]).cutSettings.rough.stepdown).filter((z) => z < TAB_Z).length
+    loops.forEach((_, k) => expect(deep.get(k)).toBe(expected))
   }
   const perLoop = (loops: PathsD, tabs: Point[]) => loops.map((_, k) => tabs.filter((t) => loopIndex(t, loops) === k).length)
 
@@ -485,6 +499,17 @@ describe('tabs on every cut loop', () => {
     expect(op.tabs).toBeUndefined()
     expect(raised(op)).toHaveLength(0)
     expect(res.warnings).toContain('Loop too small for a tab in Rect')
+  })
+  it('an outside piece too small for a tab warns that it comes loose', () => {
+    const { res, op } = plan({ ...rect(1, 1), cut: { ...defaultCut(12), tabWidth: 20 } })
+    expect(op.tabs).toBeUndefined()
+    expect(res.warnings).toContain('A piece of Rect is too small for a tab and will come loose')
+  })
+  it('a loop between one and two tab widths gets one tab of half its length', () => {
+    const { op, loops, tabs } = plan({ ...rect(1, 1), cut: { ...defaultCut(12), side: 'on', tabWidth: 3 } })
+    expect(op.tabs).toEqual([expect.objectContaining({ width: 2 })])
+    for (const { length } of raised(op)) expect(length).toBeCloseTo(2, 3)
+    assertRaisesMatchTabs(op, loops, tabs)
   })
   it('"e" in Roboto, outside: the counter is held', () => {
     const buf = readFileSync(new URL('../../public/fonts/Roboto-Regular.ttf', import.meta.url))

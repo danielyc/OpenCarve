@@ -198,11 +198,14 @@ function CutSection({ selected }: { selected: Shape[] }) {
             </label>
           )}
           {selected.every((s) => tabsActive(s.cut, t)) && (
-            <div className="fields">
-              {numberField('Tab count', (c) => c.tabCount, (tabCount) => ({ tabCount }), false)}
-              {numberField('Tab width', (c) => c.tabWidth, (tabWidth) => ({ tabWidth }))}
-              {numberField('Tab height', (c) => c.tabHeight, (tabHeight) => ({ tabHeight }))}
-            </div>
+            <>
+              <div className="fields">
+                {numberField('Tab count', (c) => c.tabCount, (tabCount) => ({ tabCount }), false)}
+                {numberField('Tab width', (c) => c.tabWidth, (tabWidth) => ({ tabWidth }))}
+                {numberField('Tab height', (c) => c.tabHeight, (tabHeight) => ({ tabHeight }))}
+              </div>
+              <p className="hint">Tabs hold every cut-out piece, including scrap.</p>
+            </>
           )}
         </>
       )}

@@ -8,6 +8,7 @@ import type { CamResult } from './toolpath'
 const DEBOUNCE_MS = 300
 let worker: Worker | null = null
 let latest = 0
+let latestShapes: Shape[] = []
 let latestProject = '' // a result for a project that's no longer open is dropped even if its id is still the latest
 
 // Fonts only load on the main thread, so text is flattened to a compound shape before it goes to the worker.
@@ -41,11 +42,12 @@ function plan(project: Project) {
     worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })
     worker.onmessage = (e: MessageEvent<{ id: number; result?: CamResult; error?: string }>) => {
       const { id, result, error } = e.data
-      if (id === latest && latestProject === useAppStore.getState().project.id) useAppStore.setState({ cam: result ? withFontNotes(result) : failed(error), camBusy: false })
+      if (id === latest && latestProject === useAppStore.getState().project.id) useAppStore.setState({ cam: result ? { ...withFontNotes(result), shapes: latestShapes } : failed(error), camBusy: false })
     }
     worker.onerror = (e) => useAppStore.setState({ cam: failed(e.message || 'worker failed'), camBusy: false })
   }
   latestProject = project.id
+  latestShapes = project.shapes
   fontNotes = fontWarnings(project)
   worker.postMessage({ id: ++latest, project: flattenText(project) })
 }

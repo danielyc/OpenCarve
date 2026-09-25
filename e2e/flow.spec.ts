@@ -59,6 +59,15 @@ test('designs, simulates, exports and reopens a two-bit sign', async ({ page }) 
   await tabs.check()
   // Tab marks come from the planned toolpaths, one per placed tab.
   await expect(page.locator('[data-tab]')).toHaveCount(4)
+  // Moving the shape drops its marks at once (read a frame later, well inside the replan debounce) until the new plan lands.
+  const marksAfterNudge = await page.evaluate(async () => {
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    await new Promise(requestAnimationFrame)
+    return document.querySelectorAll('[data-tab]').length
+  })
+  expect(marksAfterNudge).toBe(0)
+  await expect(page.locator('[data-tab]')).toHaveCount(4)
 
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
   await page.getByLabel('Detail bit').selectOption('60-vbit')
