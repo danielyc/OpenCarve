@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { parse } from 'opentype.js'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import type { Point, Polyline, TextShape } from '../model'
 import { cubicSegments, flattenCubic, flattenQuad } from './bezier'
-import { filterFontsourceIndex, fontSource, FONTS, glyphPolylines } from './fonts'
+import { filterFontsourceIndex, fontFamily, fontSource, FONTS, glyphPolylines, loadFont, missingGlyphs, uploadFont } from './fonts'
 import { polylineBounds, scaleShape } from './geometry'
 
 const buf = readFileSync(new URL('../../public/fonts/Roboto-Regular.ttf', import.meta.url))
@@ -140,12 +140,14 @@ test('font ids map to their source kind', () => {
 })
 
 test('the Fontsource index keeps latin, regular-weight fonts with a permissive licence', () => {
-  const entry = { subsets: ['latin', 'latin-ext'], weights: [400, 700], styles: ['normal'], defSubset: 'latin', variable: false, category: 'serif', license: 'OFL-1.1' }
+  const entry = { subsets: ['latin', 'latin-ext'], weights: [400, 700], styles: ['normal'], defSubset: 'latin', variable: false, category: 'serif', license: 'OFL-1.1', type: 'google' }
   const index = [
     { ...entry, id: 'lora', family: 'Lora' },
     { ...entry, id: 'noto-sans-jp', family: 'Noto Sans JP', subsets: ['japanese'] },
     { ...entry, id: 'thin', family: 'Thin', weights: [100, 200] },
     { ...entry, id: 'mit-font', family: 'MIT Font', license: 'mit' },
+    { ...entry, id: 'molle', family: 'Molle', styles: ['italic'] },
+    { ...entry, id: 'not-google', family: 'Not Google', type: 'other' },
     { ...entry, id: 'roboto', family: 'Roboto', category: 'sans-serif', license: 'Apache-2.0' },
   ]
   expect(filterFontsourceIndex(index)).toEqual([
@@ -166,4 +168,51 @@ test('lines split on CRLF too, and an upward bend keeps the innermost line off t
 test('a near-zero bend lays out straight', () => {
   const straight = glyphPolylines(font, 'Hello', 20)
   for (const arc of [1e-320, 0.4, -0.4]) expect(glyphPolylines(font, 'Hello', 20, { arc })).toEqual(straight)
+})
+
+// Gives one glyph an absurd contour count so reading its outline runs off the end of the file.
+function corruptGlyph(file: string, ch: string): ArrayBuffer {
+  const b = readFileSync(new URL(`../../public/fonts/${file}`, import.meta.url))
+  const buf = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer
+  const view = new DataView(buf)
+  const table = (tag: string) => {
+    for (let i = 0; i < view.getUint16(4); i++) {
+      const rec = 12 + 16 * i
+      if (String.fromCharCode(...new Uint8Array(buf, rec, 4)) === tag) return view.getUint32(rec + 8)
+    }
+    throw new Error(tag)
+  }
+  const index = parse(buf.slice(0)).charToGlyph(ch).index
+  const loca = table('loca')
+  const start = view.getInt16(table('head') + 50) === 0 ? 2 * view.getUint16(loca + 2 * index) : view.getUint32(loca + 4 * index)
+  view.setInt16(table('glyf') + start, 0x7fff)
+  return buf
+}
+
+test('a font with a corrupt glyph is rejected up front, and layout skips the glyph instead of throwing', async () => {
+  const bad = corruptGlyph('Roboto-Regular.ttf', 'H')
+  await expect(fontFamily(bad.slice(0))).rejects.toThrow(/corrupt/)
+  expect(await fontFamily(parseFileBuf('Roboto-Regular.ttf'))).toBe('Roboto')
+  expect(glyphPolylines(parse(bad), 'HI', 20)).toHaveLength(1)
+})
+
+const parseFileBuf = (file: string) => {
+  const b = readFileSync(new URL(`../../public/fonts/${file}`, import.meta.url))
+  return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer
+}
+
+test('an oversized upload is refused before it is read', async () => {
+  const arrayBuffer = vi.fn()
+  await expect(uploadFont({ name: 'huge.ttf', size: 6 * 1024 * 1024, arrayBuffer } as unknown as File)).rejects.toThrow(/5 MB/)
+  expect(arrayBuffer).not.toHaveBeenCalled()
+})
+
+test('characters a loaded font has no glyph for are reported', async () => {
+  vi.stubGlobal('fetch', async (url: string) => new Response(parseFileBuf(url.split('/').pop()!)))
+  await loadFont('allerta-stencil')
+  await loadFont('roboto')
+  vi.unstubAllGlobals()
+  expect(missingGlyphs('allerta-stencil', 'Załóż ą')).toEqual(['ż', 'ą'])
+  expect(missingGlyphs('roboto', 'Załóż ą')).toEqual([])
+  expect(missingGlyphs('lora', 'ą')).toEqual([]) // not loaded: unknown yet
 })

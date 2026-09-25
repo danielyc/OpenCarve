@@ -12,7 +12,7 @@ export const FONTS: { id: string; name: string; file: string; category: FontCate
   { id: 'montserrat', name: 'Montserrat', file: 'Montserrat-Regular.ttf', category: 'sans-serif' },
   { id: 'oswald', name: 'Oswald', file: 'Oswald-Regular.ttf', category: 'sans-serif' },
   { id: 'lora', name: 'Lora', file: 'Lora-Regular.ttf', category: 'serif' },
-  { id: 'playfair-display', name: 'Playfair Display', file: 'PlayfairDisplay-Regular.ttf', category: 'serif' },
+  { id: 'source-serif-4', name: 'Source Serif 4', file: 'SourceSerif4-Regular.ttf', category: 'serif' },
   { id: 'merriweather', name: 'Merriweather', file: 'Merriweather-Regular.ttf', category: 'serif' },
   { id: 'cinzel', name: 'Cinzel', file: 'Cinzel-Regular.ttf', category: 'serif' },
   { id: 'pacifico', name: 'Pacifico', file: 'Pacifico-Regular.ttf', category: 'handwriting' },
@@ -77,11 +77,17 @@ export function fontSource(id: string): FontSource {
   return { kind: 'bundled', label: f.name, load: () => fetchBuffer(`${import.meta.env.BASE_URL}fonts/${f.file}`) }
 }
 
-// Validates font data (size cap, must parse) and returns its family name.
+// Validates untrusted font data (size cap, must parse) and returns its family name. opentype.js reads outlines
+// lazily, so every glyph is outlined once here: a corrupt table fails now rather than while laying out text.
 export async function fontFamily(data: ArrayBuffer): Promise<string> {
   if (data.byteLength > MAX_FONT_BYTES) throw new Error('font is larger than 5 MB')
   const font = (await import('opentype.js')).parse(data)
   if (!font.unitsPerEm || !font.glyphs.length) throw new Error('not a usable font')
+  try {
+    for (let i = 0; i < font.glyphs.length; i++) font.glyphs.get(i).getPath(0, 0, 72)
+  } catch {
+    throw new Error('its glyph outlines are corrupt')
+  }
   return font.getEnglishName('fontFamily')?.trim() || 'Custom font'
 }
 
@@ -109,6 +115,7 @@ export async function storeUploadedFont(f: StoredFont) {
 }
 
 export async function uploadFont(file: File): Promise<FontEntry> {
+  if (file.size > MAX_FONT_BYTES) throw new Error('font is larger than 5 MB')
   const data = await file.arrayBuffer()
   const entry = { id: `upload:${crypto.randomUUID()}`, name: await fontFamily(data) }
   await storeUploadedFont({ ...entry, data })
@@ -131,12 +138,12 @@ const FS_LICENSES = ['OFL-1.1', 'Apache-2.0', 'UFL-1.0']
 const INDEX_KEY = 'opencarve:fsindex'
 const INDEX_TTL = 7 * 24 * 3600 * 1000
 
-// Keeps fonts with a latin subset, a regular weight and a permissive licence.
+// Keeps Google Fonts with a latin subset, an upright regular (400 normal) and a permissive licence.
 export function filterFontsourceIndex(raw: unknown): FsFont[] {
   if (!Array.isArray(raw)) return []
   return raw.flatMap((f): FsFont[] => {
     if (typeof f !== 'object' || f === null) return []
-    const { id, family, category, license, subsets, weights } = f as Record<string, unknown>
+    const { id, family, category, license, subsets, weights, styles, type } = f as Record<string, unknown>
     const ok =
       typeof id === 'string' &&
       FS_ID.test(id) &&
@@ -146,7 +153,10 @@ export function filterFontsourceIndex(raw: unknown): FsFont[] {
       Array.isArray(subsets) &&
       subsets.includes('latin') &&
       Array.isArray(weights) &&
-      weights.includes(400)
+      weights.includes(400) &&
+      Array.isArray(styles) &&
+      styles.includes('normal') &&
+      type === 'google'
     return ok ? [{ id, family, category: typeof category === 'string' ? category : 'other', license }] : []
   })
 }
@@ -226,8 +236,15 @@ export function glyphPolylines(font: Font, text: string, size: number, style: Te
     for (const ch of line) {
       const glyph = font.charToGlyph(ch)
       if (prev) x += font.getKerningValue(prev, glyph) * scale + letterSpacing
-      // Glyph contours are always closed, but opentype.js doesn't always emit Z.
-      const cmds = (glyph.getPath(x, 0, size).commands as PathCommand[]).flatMap((c): PathCommand[] => (c.type === 'M' ? [{ type: 'Z' }, c] : [c]))
+      // Glyph contours are always closed, but opentype.js doesn't always emit Z. A corrupt glyph is left out
+      // (missingGlyphs reports it) so layout, the canvas and CAM never throw.
+      let path: PathCommand[] = []
+      try {
+        path = glyph.getPath(x, 0, size).commands as PathCommand[]
+      } catch {
+        /* skipped */
+      }
+      const cmds = path.flatMap((c): PathCommand[] => (c.type === 'M' ? [{ type: 'Z' }, c] : [c]))
       const advance = (glyph.advanceWidth ?? 0) * scale
       glyphs.push({
         polys: commandsToPolylines([...cmds, { type: 'Z' }]).map(({ points }) => ({ closed: true, points: points.map(([px, py]): Point => [px, -py]) })),
@@ -277,6 +294,34 @@ export function glyphPolylines(font: Font, text: string, size: number, style: Te
 
 // Flattened at the real size (mm) so the tolerance holds. Returns null (and starts loading) until the font is ready;
 // a font that failed to load is only retried by an explicit loadFont().
+// Characters (not whitespace) the loaded font has no usable glyph for; empty while the font isn't loaded.
+export function missingGlyphs(id: string, text: string): string[] {
+  const font = loaded.get(id)
+  if (!font) return []
+  const bad = (ch: string) => {
+    const g = font.charToGlyph(ch)
+    if (!g || g.index === 0) return true
+    try {
+      g.getPath(0, 0, 72)
+      return false
+    } catch {
+      return true
+    }
+  }
+  return [...new Set(text)].filter((ch) => ch.trim() && bad(ch))
+}
+
+export const fontFailed = (id: string) => failed.has(id)
+
+// After an uploaded font is removed, nothing may keep drawing it from memory.
+export function forgetFont(id: string) {
+  loaded.delete(id)
+  pending.delete(id)
+  failed.delete(id)
+  const prefix = JSON.stringify([id]).slice(0, -1) + ','
+  for (const key of [...glyphCache.keys()]) if (key.startsWith(prefix)) glyphCache.delete(key)
+}
+
 export function textGlyphs(t: Pick<TextShape, 'font' | 'size' | 'text'> & TextStyle): Polyline[] | null {
   const font = loaded.get(t.font)
   if (!font) {

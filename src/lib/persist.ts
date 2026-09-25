@@ -1,7 +1,8 @@
 import { del, get, set, update } from 'idb-keyval'
-import { newId, newProject, type Project } from '../model'
+import { newId, newProject, type Project, type TextShape } from '../model'
 import { useAppStore } from '../store'
-import { getUploadedFont, storeUploadedFont } from './fonts'
+import { FONTS, forgetFont, getUploadedFont, loadFont, removeUploadedFont, storeUploadedFont } from './fonts'
+import { fitText } from './geometry'
 import { parseProjectFile, serializeProject, uploadedFontIds, type EmbeddedFonts } from './projectFile'
 
 // IndexedDB layout: an index of entries, one record per project (the same versioned JSON as a .opencarve file,
@@ -143,9 +144,8 @@ export async function openFile(file: File | undefined) {
   if (!file) return
   try {
     const warnings: string[] = []
-    const { project, fonts } = await parseProjectFile(await file.text(), warnings, hasFont)
-    for (const [id, f] of Object.entries(fonts)) if (!(await hasFont(id))) await storeUploadedFont({ id, ...f })
-    const p = { ...project, id: newId() }
+    const parsed = await parseProjectFile(await file.text(), warnings, hasFont)
+    const p = { ...(await importFonts(parsed.project, parsed.fonts, warnings)), id: newId() }
     useAppStore.getState().loadProject(p)
     await saveProject(p)
     // Same pattern as SVG import: the canvas status line is cleared by font loads, so notes go in a dialog.
@@ -155,11 +155,65 @@ export async function openFile(file: File | undefined) {
   }
 }
 
+const sameBytes = (a: ArrayBuffer, b: ArrayBuffer) => {
+  if (a.byteLength !== b.byteLength) return false
+  const [x, y] = [new Uint8Array(a), new Uint8Array(b)]
+  return x.every((v, i) => v === y[i])
+}
+
+// Stores a file's embedded fonts in this browser. An id already stored with different bytes (another file's font)
+// gets a fresh id; a font that can't be stored (e.g. quota) is dropped and its text falls back to Roboto.
+export async function importFonts(project: Project, fonts: EmbeddedFonts, warnings: string[]): Promise<Project> {
+  const remap = new Map<string, string>()
+  for (const [id, f] of Object.entries(fonts)) {
+    try {
+      const stored = await getUploadedFont(id)
+      if (stored && sameBytes(stored.data, f.data)) continue
+      const newId = stored ? `upload:${crypto.randomUUID()}` : id
+      await storeUploadedFont({ id: newId, ...f })
+      if (newId !== id) remap.set(id, newId)
+    } catch (e) {
+      warnings.push(`Could not store the font "${f.name}" (${(e as Error).message}); its text uses ${FONTS[0].name}.`)
+      remap.set(id, FONTS[0].id)
+    }
+  }
+  if (!remap.size) return project
+  return { ...project, shapes: project.shapes.map((s) => (s.type === 'text' && remap.has(s.font) ? { ...s, font: remap.get(s.font)! } : s)) }
+}
+
+// Names of stored projects (other than `exceptId`) whose text uses the font.
+export async function fontUsers(fontId: string, exceptId?: string): Promise<string[]> {
+  const needle = JSON.stringify(fontId)
+  const users: string[] = []
+  for (const e of await listProjects()) {
+    if (e.id !== exceptId && (await get<string>(key(e.id)))?.includes(needle)) users.push(e.name)
+  }
+  return users
+}
+
+// Removes an uploaded font unless another saved project still uses it (those names are returned instead). Text in
+// the open project switches to Roboto (undoable); undoing shows it unavailable rather than drawing it from memory.
+export async function removeFont(fontId: string): Promise<{ blockedBy: string[]; fellBack: number }> {
+  const st = useAppStore.getState()
+  const blockedBy = await fontUsers(fontId, st.project.id)
+  if (blockedBy.length) return { blockedBy, fellBack: 0 }
+  await removeUploadedFont(fontId)
+  forgetFont(fontId)
+  const ids = st.project.shapes.filter((s) => s.type === 'text' && s.font === fontId).map((s) => s.id)
+  if (ids.length) {
+    const refit = (await loadFont(FONTS[0].id).then(() => true, () => false)) ? fitText : (t: TextShape) => t
+    st.updateShapes(ids, (s) => (s.type === 'text' ? refit({ ...s, font: FONTS[0].id }) : s))
+  }
+  return { blockedBy, fellBack: ids.length }
+}
+
+// Every referenced uploaded font must be embedded, or the file wouldn't open elsewhere.
 export async function downloadProject(p: Project) {
   const fonts: EmbeddedFonts = {}
   for (const id of uploadedFontIds(p)) {
     const f = await getUploadedFont(id).catch(() => undefined)
-    if (f) fonts[id] = { name: f.name, data: f.data }
+    if (!f) throw new Error(`a font it uses (${id}) is missing from this browser`)
+    fonts[id] = { name: f.name, data: f.data }
   }
   const url = URL.createObjectURL(new Blob([serializeProject(p, fonts)], { type: 'application/json' }))
   const a = document.createElement('a')

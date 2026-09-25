@@ -31,3 +31,25 @@ test('uploads a font and uses it', async ({ page }) => {
   await page.keyboard.press('Escape')
   await expect(page.getByLabel('Search fonts')).toBeHidden()
 })
+
+test('keys on the font picker trigger never reach the canvas shortcuts', async ({ page }) => {
+  const trigger = page.getByRole('button', { name: 'Font: Roboto' })
+  const x = await page.getByLabel('X', { exact: true }).inputValue()
+  await trigger.focus()
+  await page.keyboard.press('Delete')
+  await page.keyboard.press('ArrowLeft')
+  await expect(page.locator('[data-id]')).toHaveCount(1)
+  await expect(page.getByLabel('X', { exact: true })).toHaveValue(x)
+  await page.keyboard.press('ArrowDown')
+  await expect(page.getByLabel('Search fonts')).toBeFocused()
+  await page.mouse.click(5, 300) // outside the picker
+  await expect(page.getByLabel('Search fonts')).toBeHidden()
+})
+
+test('warns about characters the font cannot draw', async ({ page }) => {
+  await page.getByRole('button', { name: 'Font: Roboto' }).click()
+  await page.getByLabel('Search fonts').fill('Allerta')
+  await page.getByRole('button', { name: /^Allerta Stencil/ }).click()
+  await page.getByLabel('Text', { exact: true }).fill('Łódź ą')
+  await expect(page.getByText("Allerta Stencil has no glyph for 'ź' 'ą'")).toBeVisible()
+})

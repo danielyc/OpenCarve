@@ -474,6 +474,7 @@ export default function Inspector() {
             <Field wide live multiline label="Text" value={textValue((s) => s.text)} onCommit={(text) => updateText({ text })} />
             <FontPicker
               value={textValue((s) => s.font)}
+              text={textValue((s) => s.text)}
               onChange={(font) =>
                 loadFont(font)
                   .then(() => updateText({ font }))

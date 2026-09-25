@@ -1200,6 +1200,10 @@ input.project-name {
   color: var(--muted);
 }
 
+.font-missing {
+  color: #c92a2a;
+}
+
 .font-row .font-remove {
   flex: none;
   color: var(--muted);

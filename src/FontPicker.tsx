@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { CATEGORIES, FONTS, fontsourceIndex, fontSource, listUploadedFonts, loadFont, removeUploadedFont, uploadFont, type FontEntry, type FsFont } from './lib/fonts'
-import { fitText } from './lib/geometry'
+import { CATEGORIES, FONTS, fontsourceIndex, fontSource, listUploadedFonts, missingGlyphs, uploadFont, type FontEntry, type FsFont } from './lib/fonts'
+import { fontUsers, removeFont } from './lib/persist'
 import { useAppStore } from './store'
 
 const LIMIT = 200
@@ -15,13 +15,15 @@ interface Row {
 
 // Font picker: Bundled / Your fonts / Google Fonts (the Fontsource index, fetched once "Browse Google Fonts" is on).
 // Rows are plain buttons; arrow keys move between them, Escape closes and returns focus to the trigger.
-export function FontPicker({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+// `text` is the selected text, checked for characters the font can't draw.
+export function FontPicker({ value, text, onChange }: { value: string; text: string; onChange: (id: string) => void }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<string | null>(null)
   const [uploads, setUploads] = useState<FontEntry[]>([])
   const [google, setGoogle] = useState<FsFont[] | null>(null)
   const [browsing, setBrowsing] = useState(false)
+  const wrapper = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const panel = useRef<HTMLDivElement>(null)
   const file = useRef<HTMLInputElement>(null)
@@ -35,6 +37,14 @@ export function FontPicker({ value, onChange }: { value: string; onChange: (id: 
       setStatus(`Could not load the Google Fonts list (${e.message})`)
     })
   }, [browsing, google])
+  useEffect(() => {
+    if (!open) return
+    const outside = (e: PointerEvent) => !wrapper.current?.contains(e.target as Node) && setOpen(false)
+    document.addEventListener('pointerdown', outside)
+    return () => document.removeEventListener('pointerdown', outside)
+  }, [open])
+  useAppStore((s) => s.fontsVersion) // re-check glyphs once the font arrives
+  const missing = value ? missingGlyphs(value, text) : []
 
   const close = () => {
     setOpen(false)
@@ -59,15 +69,14 @@ export function FontPicker({ value, onChange }: { value: string; onChange: (id: 
   }
 
   const remove = async (f: FontEntry) => {
+    const blocked = (names: string[]) => setStatus(`"${f.name}" is still used by: ${names.join(', ')}. Change the font there first.`)
+    const users = await fontUsers(f.id, useAppStore.getState().project.id)
+    if (users.length) return blocked(users)
     if (!confirm(`Remove the font "${f.name}" from this browser?`)) return
-    await removeUploadedFont(f.id)
+    const { blockedBy, fellBack } = await removeFont(f.id)
+    if (blockedBy.length) return blocked(blockedBy)
     await refreshUploads()
-    const st = useAppStore.getState()
-    const ids = st.project.shapes.filter((s) => s.type === 'text' && s.font === f.id).map((s) => s.id)
-    if (!ids.length) return
-    await loadFont(FONTS[0].id)
-    st.updateShapes(ids, (s) => (s.type === 'text' ? fitText({ ...s, font: FONTS[0].id }) : s))
-    setStatus(`Removed "${f.name}"; its text now uses ${FONTS[0].name}.`)
+    if (fellBack) setStatus(`Removed "${f.name}"; its text now uses ${FONTS[0].name}.`)
   }
 
   const upload = async (f: File | undefined) => {
@@ -80,31 +89,36 @@ export function FontPicker({ value, onChange }: { value: string; onChange: (id: 
     }
   }
 
-  // Keys stay in the panel so the canvas shortcuts (arrows nudge, Escape deselects, letters pick tools) don't fire.
+  // Plain keys stay in the picker (trigger included) so canvas shortcuts (arrows nudge, Delete deletes, letters
+  // pick tools) don't fire; Ctrl/Cmd shortcuts like undo still reach the app, as does Escape on the closed trigger.
   const onKeyDown = (e: KeyboardEvent) => {
+    if (e.ctrlKey || e.metaKey || (e.key === 'Escape' && !open)) return
     e.stopPropagation()
-    if (e.key === 'Escape') {
-      close()
-      return
-    }
+    if (e.key === 'Escape') return close()
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+    e.preventDefault()
+    if (!open) return setOpen(e.key === 'ArrowDown')
     const rows = [...panel.current!.querySelectorAll<HTMLElement>('[data-font]')]
     const i = rows.indexOf(document.activeElement as HTMLElement)
     const next = e.key === 'ArrowDown' ? Math.min(rows.length - 1, i + 1) : i - 1
-    e.preventDefault()
     if (next < 0) panel.current!.querySelector('input')?.focus()
     else rows[next]?.focus()
   }
 
   const label = value ? fontSource(value).label : 'Mixed'
   return (
-    <div className="field wide font-picker">
+    <div ref={wrapper} className="field wide font-picker" onKeyDown={onKeyDown}>
       <span>Font</span>
       <button ref={trigger} className="font-trigger" aria-label={`Font: ${label}`} aria-expanded={open} onClick={() => setOpen(!open)}>
         {label}
       </button>
+      {missing.length > 0 && (
+        <small className="font-missing" role="status">
+          {label} has no glyph for {missing.map((c) => `'${c}'`).join(' ')}
+        </small>
+      )}
       {open && (
-        <div ref={panel} className="font-panel" role="group" aria-label="Choose a font" onKeyDown={onKeyDown}>
+        <div ref={panel} className="font-panel" role="group" aria-label="Choose a font">
           <input autoFocus type="search" placeholder="Search fonts" aria-label="Search fonts" value={query} onChange={(e) => setQuery(e.target.value)} />
           <div className="font-chips">
             {CATEGORIES.map((c) => (
