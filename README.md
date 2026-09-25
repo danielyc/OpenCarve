@@ -4,6 +4,8 @@ Free, open-source (AGPL-3.0) design and toolpath software for hobby CNC routers,
 
 **Try it:** https://danielyc.github.io/OpenCarve/ (nothing is uploaded; projects, fonts and settings are stored in your own browser).
 
+![OpenCarve: a rectangle outline with holding tabs and arched V-carved text on the design canvas, with the 3D carve preview beside it](docs/screenshot.png)
+
 ## Features
 
 - **Design**: rectangle, ellipse, polygon, pen (lines and closed paths) and text tools; move, scale, rotate, align, duplicate, nudge, undo/redo; snap to grid (G) with selectable sizes in mm or inches (hold Alt to bypass).
