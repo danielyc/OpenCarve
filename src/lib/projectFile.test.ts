@@ -95,10 +95,12 @@ test('validates bit overrides, dropping bad ones with a warning', () => {
   expect(p.bitOverrides).toEqual({ rough: { diameter: 6 } })
   expect(p.cutSettings.rough.stepdown).toBe(3) // recommended from the effective bit
   expect(warnings).toEqual(['Ignored the detail bit override: no detail bit.', 'Ignored the laser bit override: no laser bit.'])
-  for (const bad of [{ diameter: 'x' }, { diameter: 60 }, { angle: 5 }, { flat: 20 }, 3]) {
+  for (const bad of [{ diameter: 'x' }, { diameter: 60 }, { angle: 5 }, { flat: 20 }, { flat: null }, 3]) {
     const w: string[] = []
     expect(parseProject(file({ ...sample(), bitOverrides: { detail: bad } }), w).bitOverrides).toEqual({})
     expect(w).toHaveLength(1)
   }
   expect(() => parseProject(file({ ...sample(), bitOverrides: [] }))).toThrow(/bitOverrides must be an object/)
+  // Values equal to the library bit (within display rounding) aren't overrides.
+  expect(parseProject(file({ ...sample(), bitOverrides: { rough: { diameter: 3.17 }, detail: { angle: 90, flat: 1 } } })).bitOverrides).toEqual({ detail: { flat: 1 } })
 })

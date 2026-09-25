@@ -38,33 +38,46 @@ export const MACHINES: Project['machine'][] = [
 
 export const findBit = (id: string) => BITS.find((b) => b.id === id) ?? BITS[0]
 
+// Bit geometry as shown to people, always in mm (G-code headers and file names are mm too).
+export const bitGeometry = (b: Bit) =>
+  [`${+b.diameter.toFixed(3)} mm`, ...(b.type === 'vbit' ? [`${+b.angle!.toFixed(3)}°`, `flat ${+(b.flat ?? 0).toFixed(3)} mm`] : [])].join(', ')
+
 // The library bit for a role with the project's override applied. Callers only ask for roles that have a bit.
 export function effectiveBit(p: Pick<Project, 'bits' | 'bitOverrides'>, role: BitRole): Bit {
   const bit = findBit(p.bits[role]!)
   const o = p.bitOverrides?.[role]
-  return o && Object.keys(o).length ? { ...bit, ...o, name: `${bit.name} (custom)` } : bit
+  if (!o || !Object.keys(o).length) return bit
+  const b = { ...bit, ...o }
+  return { ...b, name: `${bit.name} (custom ${bitGeometry(b)})` }
 }
 
 // Why an override can't apply to `bit` (V-bit fields only on V-bits), or null. `flat` is the tip flat's diameter.
+// Every supplied field must be a finite number; absent fields keep the library value.
 export function overrideError(bit: Bit, o: BitOverride): string | null {
+  for (const [k, v] of Object.entries(o)) if (typeof v !== 'number' || !Number.isFinite(v)) return `${k} must be a number`
+  if (bit.type !== 'vbit' && (o.angle !== undefined || o.flat !== undefined)) return 'Only V-bits have an angle or flat tip'
   const b = { ...bit, ...o }
-  const bad = (v: unknown, min: number, max: number) => typeof v !== 'number' || !Number.isFinite(v) || v < min || v > max
-  if (bad(b.diameter, 0.1, 50)) return 'diameter must be 0.1–50 mm'
-  if (bit.type !== 'vbit') return o.angle !== undefined || o.flat !== undefined ? 'only V-bits have an angle or flat' : null
-  if (bad(b.angle, 10, 170)) return 'angle must be 10–170°'
-  if (bad(b.flat ?? 0, 0, Infinity) || (b.flat ?? 0) >= b.diameter) return 'flat must be at least 0 and less than the diameter'
+  if (b.diameter < 0.1 || b.diameter > 50) return 'Diameter must be 0.1–50 mm'
+  if (bit.type !== 'vbit') return null
+  if (b.angle! < 10 || b.angle! > 170) return 'Angle must be 10–170°'
+  if ((b.flat ?? 0) < 0 || (b.flat ?? 0) >= b.diameter) return 'Flat tip must be at least 0 and less than the diameter'
   return null
 }
+
+// Keeps only the fields that differ from the library bit: within 0.005 mm (0.0005°) counts as the same, so values
+// that went through a rounded display don't turn a bit custom.
+export const differingFields = (bit: Bit, o: BitOverride): BitOverride =>
+  Object.fromEntries(Object.entries(o).filter(([k, v]) => v !== undefined && !(Math.abs(v - (bit[k as keyof BitOverride] ?? 0)) < (k === 'angle' ? 0.0005 : 0.005))))
 
 export const findMaterial = (id: string) => MATERIALS.find((m) => m.id === id) ?? MATERIALS[0]
 
 // Material numbers are for a 1/8" bit: feed and plunge scale with diameter (roughly constant chipload), V-bits unscaled.
-// V-bit stepdown is min(flat, 1.5) mm, or 1 mm for a sharp tip.
+// V-bit stepdown is 1 mm.
 export function recommendedSettings(material: Material, bit: Bit, maxRpm: number): CutSettings {
   const vbit = bit.type === 'vbit'
   const rpm = Math.min(material.rpm, maxRpm)
   const f = (vbit ? 1 : Math.min(1.5, Math.max(0.3, bit.diameter / 3.175))) * (rpm / material.rpm)
-  const stepdown = vbit ? (bit.flat ? Math.min(bit.flat, 1.5) : 1) : Math.round(Math.min(6, Math.max(0.2, material.stepdownFrac * bit.diameter)) * 10) / 10
+  const stepdown = vbit ? 1 : Math.round(Math.min(6, Math.max(0.2, material.stepdownFrac * bit.diameter)) * 10) / 10
   return {
     feed: Math.round(material.feed * f),
     plunge: Math.round(material.plunge * f),

@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { CamResult } from './cam/toolpath'
 import { onFontLoad } from './lib/fonts'
 import { polylineBounds, shapeBounds, shapeToPolylines } from './lib/geometry'
-import { effectiveBit, findBit, findMaterial, overrideError, recommendedSettings } from './lib/library'
+import { differingFields, effectiveBit, findBit, findMaterial, overrideError, recommendedSettings } from './lib/library'
 import type { Units } from './lib/units'
 import type { SimResult } from './preview/sim'
 import { defaultCut, newId, newProject, validCut, type BitOverride, type BitRole, type Cut, type CutSettings, type Project, type Shape, type ShapePatch } from './model'
@@ -249,7 +249,7 @@ export const useAppStore = create<AppState>()((set, get) => {
         const bit = findBit(id)
         const merged: BitOverride = patch ? { ...p.bitOverrides?.[role], ...patch } : {}
         if (overrideError(bit, merged)) return p
-        const o = Object.fromEntries(Object.entries(merged).filter(([k, v]) => v !== bit[k as keyof BitOverride]))
+        const o = differingFields(bit, merged)
         const bitOverrides = { ...p.bitOverrides, [role]: o }
         if (!Object.keys(o).length) delete bitOverrides[role]
         return recommended({ ...p, bitOverrides })

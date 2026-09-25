@@ -181,10 +181,10 @@ test('bit overrides drive recommendations until settings are custom, and reset w
   expect(p().cutSettings.rough.stepdown).toBe(3)
 
   store().setBits({ rough: '1/8-endmill', detail: '90-vbit' })
-  store().setBitOverride('detail', { flat: 1 })
-  expect(p().cutSettings.detail?.stepdown).toBe(1)
   store().setBitOverride('detail', { flat: 0.5 })
-  expect(p().cutSettings.detail?.stepdown).toBe(0.5)
+  expect(p().cutSettings.detail?.stepdown).toBe(1)
+  store().setBitOverride('rough', { diameter: 3.17 }) // within display rounding of 3.175: not custom
+  expect(p().bitOverrides).toEqual({ detail: { flat: 0.5 } })
   store().setBits({ rough: '1/4-endmill', detail: '90-vbit' })
   expect(p().bitOverrides).toEqual({ detail: { flat: 0.5 } })
   expect(p().cutSettings.rough.stepdown).toBe(3.2)

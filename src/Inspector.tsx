@@ -7,13 +7,17 @@ import { isOpen, MAX_STEPOVER, tabsActive, type BitOverride, type BitRole, type 
 import { useAppStore } from './store'
 
 // `live` commits on every keystroke; the whole focus session is a single undo entry.
-function Field({ label, value, onCommit, wide, live }: { label: string; value: string; onCommit: (text: string) => void; wide?: boolean; live?: boolean }) {
+// `describedBy` + `invalid` point at an error shown next to the field.
+function Field(props: { label: string; value: string; onCommit: (text: string) => void; wide?: boolean; live?: boolean; invalid?: boolean; describedBy?: string }) {
+  const { label, value, onCommit, wide, live, invalid, describedBy } = props
   const [draft, setDraft] = useState<string | null>(null)
   return (
     <label className={wide ? 'field wide' : 'field'}>
       <span>{label}</span>
       <input
         value={draft ?? value}
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
         onFocus={() => {
           setDraft(value)
           if (live) useAppStore.getState().beginTransient()
@@ -194,6 +198,69 @@ function CutSection({ selected }: { selected: Shape[] }) {
   )
 }
 
+// Inline edits of the chosen library bit, saved as a per-role override. An invalid value reverts and its error stays
+// (with aria-invalid on the field) until the next valid edit. Lengths show 3 decimals in mm so 1/8" reads 3.175.
+function BitOverrideFields({ role }: { role: BitRole }) {
+  const project = useAppStore((s) => s.project)
+  const [error, setError] = useState<{ key: keyof BitOverride; message: string } | null>(null)
+  const errorId = useId()
+  const id = project.bits[role]
+  if (!id) return null
+  const { units } = project
+  const lib = findBit(id)
+  const bit = effectiveBit(project, role)
+  const fmt = (mm: number) => (units === 'mm' ? String(+mm.toFixed(3)) : formatLength(mm, units))
+  const commit = (key: keyof BitOverride, v: number | null) => {
+    const message = v === null ? 'Enter a number' : overrideError(lib, { ...project.bitOverrides?.[role], [key]: v })
+    setError(message ? { key, message } : null)
+    if (!message) useAppStore.getState().setBitOverride(role, { [key]: v! })
+  }
+  const field = (label: string, key: keyof BitOverride, value: string, parse: (t: string) => number | null) => (
+    <Field
+      label={label}
+      value={value}
+      invalid={error?.key === key}
+      describedBy={error?.key === key ? errorId : undefined}
+      onCommit={(t) => commit(key, parse(t))}
+    />
+  )
+  const len = (t: string) => parseLength(t, units)
+  const name = role === 'rough' ? 'Rough' : 'Detail'
+  const libValues = [`${fmt(lib.diameter)} ${units}`, ...(lib.type === 'vbit' ? [`${lib.angle}°`, `flat ${fmt(lib.flat ?? 0)} ${units}`] : [])].join(', ')
+  return (
+    <div className="fields bit-fields" role="group" aria-label={`${name} dimensions`}>
+      {field(`Diameter (${units})`, 'diameter', fmt(bit.diameter), len)}
+      {lib.type === 'vbit' && (
+        <>
+          {field('Angle (°)', 'angle', String(bit.angle), (t) => (t.trim() && Number.isFinite(Number(t)) ? Number(t) : null))}
+          {field(`Flat tip diameter (${units})`, 'flat', fmt(bit.flat ?? 0), len)}
+        </>
+      )}
+      {error && (
+        <p id={errorId} className="hint field-error">
+          {error.message}
+        </p>
+      )}
+      {project.bitOverrides?.[role] && (
+        <p className="note">
+          <span className="badge" title={`library: ${libValues}`}>
+            Custom
+          </span>
+          <button
+            aria-label={`Reset ${name.toLowerCase()} bit`}
+            onClick={() => {
+              setError(null)
+              useAppStore.getState().setBitOverride(role, null)
+            }}
+          >
+            Reset
+          </button>
+        </p>
+      )}
+    </div>
+  )
+}
+
 export default function Inspector() {
   const project = useAppStore((s) => s.project)
   const selection = useAppStore((s) => s.selection)
@@ -283,50 +350,6 @@ export default function Inspector() {
         </label>
       )
     }
-    // Inline edits of the chosen library bit, saved as a per-role override; invalid values revert on blur.
-    const bitOverride = (role: BitRole) => {
-      const id = bits[role]
-      if (!id) return null
-      const lib = findBit(id)
-      const bit = effectiveBit(project, role)
-      const set = (patch: BitOverride) => !overrideError(lib, { ...project.bitOverrides?.[role], ...patch }) && st().setBitOverride(role, patch)
-      const len = (label: string, mm: number, key: 'diameter' | 'flat') => (
-        <Field
-          label={`${label} (${units})`}
-          value={formatLength(mm, units)}
-          onCommit={(t) => {
-            const v = parseLength(t, units)
-            if (v !== null) set({ [key]: v })
-          }}
-        />
-      )
-      return (
-        <div className="fields bit-fields" role="group" aria-label={`${role === 'rough' ? 'Rough' : 'Detail'} dimensions`}>
-          {len('Diameter', bit.diameter, 'diameter')}
-          {lib.type === 'vbit' && (
-            <>
-              <Field
-                label="Angle (°)"
-                value={String(bit.angle)}
-                onCommit={(t) => {
-                  const v = Number(t)
-                  if (t.trim() && Number.isFinite(v)) set({ angle: v })
-                }}
-              />
-              {len('Flat tip diameter', bit.flat ?? 0, 'flat')}
-            </>
-          )}
-          {project.bitOverrides?.[role] && (
-            <p className="note">
-              <span className="badge" title={`Changed from the library ${lib.name}`}>
-                Custom
-              </span>
-              <button onClick={() => st().setBitOverride(role, null)}>Reset</button>
-            </p>
-          )}
-        </div>
-      )
-    }
     const preset = MACHINES.find((m) => m.name === machine.name)
     return (
       <>
@@ -363,9 +386,9 @@ export default function Inspector() {
         <Section title="Bits">
           <div className="fields">
             {bitSelect('Rough bit', bits.rough, (rough) => st().setBits({ ...bits, rough }))}
-            {bitOverride('rough')}
+            <BitOverrideFields role="rough" />
             {bitSelect('Detail bit', bits.detail, (detail) => st().setBits({ rough: bits.rough, ...(detail && { detail }) }), true)}
-            {bitOverride('detail')}
+            <BitOverrideFields role="detail" />
           </div>
         </Section>
         <Section title="Material">

@@ -380,6 +380,12 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
+.bit-fields .field-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #c92a2a;
+}
+
 .bit-fields .note {
   grid-column: 1 / -1;
   display: flex;

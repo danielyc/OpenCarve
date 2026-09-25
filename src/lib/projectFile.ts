@@ -1,6 +1,6 @@
 import { defaultCut, MAX_STEPOVER, newId, newProject, validCut, type BitOverride, type BitRole, type Cut, type CutSettings, type Point, type Polyline, type Project, type Shape } from '../model'
 import { FONTS } from './fonts'
-import { BITS, effectiveBit, findBit, findMaterial, MATERIALS, overrideError, recommendedSettings } from './library'
+import { BITS, differingFields, effectiveBit, findBit, findMaterial, MATERIALS, overrideError, recommendedSettings } from './library'
 
 // A self-contained, versioned document: the same JSON is the download format and the IndexedDB record,
 // so a sync backend can store it verbatim later.
@@ -129,7 +129,10 @@ function overrides(v: unknown, bits: Project['bits'], warnings: string[]): NonNu
     const o: BitOverride = isObj(ov) ? Object.fromEntries(['diameter', 'angle', 'flat'].filter((k) => ov[k] !== undefined).map((k) => [k, ov[k]])) : {}
     const error = !id ? `no ${role} bit` : !isObj(ov) ? 'not an object' : overrideError(findBit(id), o)
     if (error) warnings.push(`Ignored the ${role} bit override: ${error}.`)
-    else if (Object.keys(o).length) out[role as BitRole] = o
+    else {
+      const d = differingFields(findBit(id!), o)
+      if (Object.keys(d).length) out[role as BitRole] = d
+    }
   }
   return out
 }
