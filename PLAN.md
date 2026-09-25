@@ -50,3 +50,11 @@ All ten steps are done.
 - The time estimate ignores acceleration, so real jobs take longer.
 - The detail bit only rest-machines pockets and V-carve floors (outlines always use the rough bit).
 - Tested in Chromium only.
+
+## v1.1 — requested 2026-09-25
+Decisions: animation = tool model travelling the path in the 3D preview with play/pause, speed, scrub, and a *toggle* for progressive material removal. TTC450 (500 W, 12,000 RPM, 460×460) preset. Text: letter spacing, arc text, multi-line + alignment, mirror. Bits: inline override of diameter / V angle / flat on library bits, saved in the project, "Custom" badge + reset. Fonts: ~12 more bundled OFL fonts, upload your own TTF/OTF (browser + embedded in the project file), and on-demand Google Fonts via the Fontsource TTF CDN (api.fontsource.org index, cdn.jsdelivr.net/fontsource TTF files; cached in IndexedDB).
+
+11. **Toolpath animation** — `src/preview/` playback: tool mesh (cylinder / ball / cone by bit), timeline over all ops in G-code order using per-move times, play/pause, 1×–50× speed, scrub slider, current op highlighted; optional progressive material removal (incremental heightmap in the sim worker: stamp only newly reached moves; backwards scrub recomputes from scratch).
+12. **Machine preset + bit overrides** — TTC450 500 W preset; `Bit` override fields on the project (`bitOverrides: Record<BitRole, Partial<Bit>>`), inspector fields next to each picker, recommended settings recomputed from the effective bit.
+13. **Text controls** — model fields on TextShape: `letterSpacing` (mm), `lineHeight` (× size), `align` (left|center|right), `arc` (bend in degrees, 0 = straight, ± for up/down), `mirror` (boolean); layout in fonts.ts; inspector controls; SVG-import-like validation in projectFile.
+14. **Fonts** — 12 more bundled OFL fonts with licence files; font sources: bundled | uploaded (IndexedDB blob + base64 in `.opencarve`) | fontsource (id → CDN TTF, cached in IndexedDB); font picker with search/category over the Fontsource index (fetched once, cached); text shapes store `font: string` as `bundled:id` / `upload:id` / `fs:id` (bundled ids stay backwards compatible).
