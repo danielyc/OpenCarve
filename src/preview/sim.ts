@@ -1,5 +1,6 @@
 import type { Op, Pt3 } from '../cam/toolpath'
 import type { Bit, BitRole, Project } from '../model'
+import type { Move, Settings } from './timeline'
 
 export interface SimInput {
   id: number
@@ -7,6 +8,7 @@ export interface SimInput {
   ops: Op[]
   bits: Partial<Record<BitRole, Bit>>
   resolution?: number // cell size in mm; default keeps the grid under MAX_CELLS
+  settings?: Settings // feeds, for the animation timeline
 }
 
 // Heights (≤ 0, Z down) sampled at grid nodes: node (i, j) is at model (i·cellSize, j·cellSize), index j·width + i.
@@ -44,11 +46,17 @@ function profile(bit: Bit) {
   return { r, slope: 0, flat: r, dz: () => 0 }
 }
 
-export function simulate({ id, stock, ops, bits, resolution }: SimInput): SimResult {
+// A heightmap that tools are stamped into one move at a time.
+export function createSim({ stock, bits, resolution }: Omit<SimInput, 'id' | 'ops'>) {
   const cell = resolution ?? gridCellSize(stock.w, stock.h)
   const width = Math.ceil(stock.w / cell - 1e-9) + 1
   const height = Math.ceil(stock.h / cell - 1e-9) + 1
   const heights = new Float32Array(width * height)
+  const tools = { rough: bits.rough && profile(bits.rough), detail: bits.detail && profile(bits.detail) }
+  // Rows changed since the last takeDirty(), and since creation.
+  let lo = Infinity
+  let hi = -Infinity
+  const touched = { lo: Infinity, hi: -Infinity }
 
   // Lowers every node within reach of the tool swept at height z along (x0, y0)→(x1, y1), using the exact distance
   // to the segment; a zero-length sweep is a single plunge. Only the V-bit's reach depends on z.
@@ -74,44 +82,100 @@ export function simulate({ id, stock, ops, bits, resolution }: SimInput): SimRes
         if (d2 > reach2) continue
         const v = d2 <= flat ? z : z + tool.dz(Math.sqrt(d2))
         const idx = j * width + i
-        if (v < heights[idx]) heights[idx] = v
+        if (v < heights[idx]) {
+          heights[idx] = v
+          if (j < lo) lo = j
+          if (j > hi) hi = j
+        }
       }
     }
   }
 
-  // Like G-code, each point is a move from the previous one, across segment and op boundaries.
-  let pos: Pt3 | null = null
-  for (const op of ops) {
-    const bit = bits[op.role]
-    const tool = bit && profile(bit)
-    // Long sweeps are chunked so their bounding boxes stay close to the swept area.
-    const chunk = tool ? Math.max(4 * tool.r, 8 * cell) : 0
-    for (const seg of op.segments)
-      for (const p of seg.points) {
-        const [x0, y0, z0] = pos ?? p
-        const [x1, y1, z1] = p
-        pos = p
-        if (seg.rapid || !tool || (z0 >= 0 && z1 >= 0)) continue
-        const len = Math.hypot(x1 - x0, y1 - y0)
-        if (z0 === z1) {
-          const n = Math.ceil(len / chunk) || 1
-          for (let s = 0; s < n; s++) {
-            const [a, b] = [s / n, (s + 1) / n]
-            sweep(tool, x0 + (x1 - x0) * a, y0 + (y1 - y0) * a, x0 + (x1 - x0) * b, y0 + (y1 - y0) * b, z0)
-          }
-          continue
-        }
-        // Plunges and ramps: stamp the tool every half cell along the move.
-        const n = Math.max(1, Math.ceil(len / (cell / 2)))
-        for (let s = 0; s <= n; s++) {
-          const t = s / n
-          const z = z0 + (z1 - z0) * t
-          if (z < 0) sweep(tool, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, z)
-        }
+  // Cuts along one feed move (not a rapid) from a to b with the role's bit, up to fraction frac of it. A partial move
+  // stamps a subset of what the whole move stamps (the same sweep or the same samples), so finishing it later leaves
+  // exactly the result of stamping it whole.
+  const move = (role: BitRole, [x0, y0, z0]: Pt3, [x1, y1, z1]: Pt3, frac = 1) => {
+    const tool = tools[role]
+    if (!tool || (z0 >= 0 && z1 >= 0) || frac <= 0) return
+    const len = Math.hypot(x1 - x0, y1 - y0)
+    if (z0 === z1) {
+      // Long sweeps are chunked so their bounding boxes stay close to the swept area.
+      const n = Math.ceil(len / Math.max(4 * tool.r, 8 * cell)) || 1
+      for (let s = 0; s < n && s / n < frac; s++) {
+        const [a, b] = [s / n, Math.min(frac, (s + 1) / n)]
+        sweep(tool, x0 + (x1 - x0) * a, y0 + (y1 - y0) * a, x0 + (x1 - x0) * b, y0 + (y1 - y0) * b, z0)
       }
+      return
+    }
+    // Plunges and ramps: stamp the tool every half cell along the move.
+    const n = Math.max(1, Math.ceil(len / (cell / 2)))
+    for (let s = 0; s <= n && s / n <= frac; s++) {
+      const t = s / n
+      const z = z0 + (z1 - z0) * t
+      if (z < 0) sweep(tool, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, z)
+    }
   }
 
-  const floor = -stock.thickness
-  for (let i = 0; i < heights.length; i++) if (heights[i] < floor) heights[i] = floor
-  return { id, width, height, cellSize: cell, stock, heights }
+  // A snapshot, clamped to the stock bottom.
+  const result = (id: number): SimResult => {
+    const out = heights.slice()
+    const floor = -stock.thickness
+    for (let i = 0; i < out.length; i++) if (out[i] < floor) out[i] = floor
+    return { id, width, height, cellSize: cell, stock, heights: out }
+  }
+  const takeDirty = () => {
+    const d = { lo, hi }
+    touched.lo = Math.min(touched.lo, lo)
+    touched.hi = Math.max(touched.hi, hi)
+    lo = Infinity
+    hi = -Infinity
+    return d
+  }
+  // Marks rows as changed, e.g. rows a previous run had cut, when starting over.
+  const markDirty = (d: { lo: number; hi: number }) => {
+    lo = Math.min(lo, d.lo)
+    hi = Math.max(hi, d.hi)
+  }
+  const everTouched = () => ({ lo: Math.min(touched.lo, lo), hi: Math.max(touched.hi, hi) })
+  return { move, result, takeDirty, markDirty, everTouched, grid: { width, height, cellSize: cell, stock, heights } }
+}
+
+export function simulate(input: SimInput): SimResult {
+  const sim = createSim(input)
+  // Like G-code, each point is a move from the previous one, across segment and op boundaries.
+  let pos: Pt3 | null = null
+  for (const op of input.ops)
+    for (const seg of op.segments)
+      for (const p of seg.points) {
+        if (!seg.rapid) sim.move(op.role, pos ?? p, p)
+        pos = p
+      }
+  return sim.result(input.id)
+}
+
+export interface UpTo {
+  move: number // timeline moves before this one are done…
+  frac: number // …and this fraction of it
+}
+export interface Progress {
+  sim: ReturnType<typeof createSim>
+  done: UpTo
+}
+
+// Progressive material removal: stamps only the timeline moves between the last call and upTo. Going backwards
+// starts over from untouched stock.
+export function progress(input: Omit<SimInput, 'id' | 'ops'>, moves: Move[], state: Progress | null, upTo: UpTo): Progress {
+  const back = state && (upTo.move < state.done.move || (upTo.move === state.done.move && upTo.frac < state.done.frac))
+  if (!state || back) {
+    const sim = createSim(input)
+    if (state) sim.markDirty(state.sim.everTouched()) // those rows go back to untouched stock
+    state = { sim, done: { move: 0, frac: 0 } }
+  }
+  const { sim, done } = state
+  const end = Math.min(upTo.move, moves.length)
+  for (let i = done.move; i < end; i++) if (moves[i].cut) sim.move(moves[i].role, moves[i].a, moves[i].b)
+  const m = moves[end]
+  if (m?.cut) sim.move(m.role, m.a, m.b, Math.min(1, upTo.frac))
+  state.done = { move: end, frac: m ? upTo.frac : 0 }
+  return state
 }

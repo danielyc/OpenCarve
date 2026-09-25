@@ -3,7 +3,7 @@ import type { BitRole, CutSettings, Project } from '../model'
 import type { CamResult, Op, Pt3, Segment } from './toolpath'
 
 const RAPID_FEED = 2500 // mm/min, for the time estimate
-const SPINUP_SEC = 3
+export const SPINUP_SEC = 3
 const fmt = (n: number) => String(+n.toFixed(3))
 
 function walk(ops: Op[], start: Pt3, fn: (seg: Segment, from: Pt3, to: Pt3, op: number) => void) {
@@ -20,11 +20,15 @@ function walk(ops: Op[], start: Pt3, fn: (seg: Segment, from: Pt3, to: Pt3, op: 
 const feedFor = (seg: Segment, a: Pt3, b: Pt3, s: CutSettings) =>
   seg.rapid ? RAPID_FEED : seg.plunge || (a[0] === b[0] && a[1] === b[1] && b[2] < a[2]) ? s.plunge : s.feed
 
+// Seconds for one move, as the G-code runs it.
+export const moveTime = (seg: Segment, a: Pt3, b: Pt3, s: CutSettings) =>
+  (Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) / feedFor(seg, a, b, s)) * 60
+
 // Seconds per op, run in this order; the spin-up and the move to each op's start count towards that op.
 export function opTimes(ops: Op[], s: CutSettings): number[] {
   const sec = ops.map((_, i) => (i ? 0 : SPINUP_SEC))
   walk(ops, [0, 0, s.safeZ], (seg, a, b, i) => {
-    sec[i] += (Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) / feedFor(seg, a, b, s)) * 60
+    sec[i] += moveTime(seg, a, b, s)
   })
   return sec
 }

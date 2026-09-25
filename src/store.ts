@@ -12,6 +12,12 @@ export type Screen = 'home' | 'editor'
 export type Tool = 'select' | 'rect' | 'ellipse' | 'polygon' | 'pen' | 'text'
 export const TOOL_KEYS: Record<Tool, string> = { select: 'V', rect: 'R', ellipse: 'E', polygon: 'P', pen: 'N', text: 'T' }
 export type Align = 'left' | 'centerX' | 'right' | 'top' | 'centerY' | 'bottom'
+export interface Anim {
+  playing: boolean
+  t: number // seconds into the job
+  speed: number // 1..50
+  removal: boolean // progressive material removal
+}
 export interface View {
   zoom: number
   panX: number
@@ -39,6 +45,8 @@ interface AppState {
   sim: SimResult | null
   simBusy: boolean
   highlightOp: string | null // opKey of the op picked in the Simulate panel
+  anim: Anim // toolpath animation; t is mirrored from the preview's frame loop at ~10 Hz
+  setAnim: (patch: Partial<Anim>) => void
   setStep: (step: Step) => void
   setScreen: (screen: Screen) => void
   newProject: () => void
@@ -122,6 +130,8 @@ export const useAppStore = create<AppState>()((set, get) => {
     sim: null,
     simBusy: false,
     highlightOp: null,
+    anim: { playing: false, t: 0, speed: 1, removal: true },
+    setAnim: (patch) => set((s) => ({ anim: { ...s.anim, ...patch } })),
     setStep: (step) => set({ step }),
     setScreen: (screen) => set({ screen }),
     newProject: () => get().loadProject(newProject()),
