@@ -230,6 +230,7 @@ export default function Canvas() {
     }
     const mod = e.metaKey || e.ctrlKey
     const key = e.key.toLowerCase()
+    const editing = st.step === 'design'
     const step = e.shiftKey ? 10 : 1
     const arrows: Record<string, Point> = { arrowleft: [-step, 0], arrowright: [step, 0], arrowup: [0, step], arrowdown: [0, -step] }
     if (key === ' ') {
@@ -237,11 +238,11 @@ export default function Canvas() {
       setSpace(true)
     } else if (mod && key === 'z') st[e.shiftKey ? 'redo' : 'undo']()
     else if (mod && key === 'y') st.redo()
-    else if (mod && key === 'd') st.duplicateSelected()
-    else if (key === 'delete' || key === 'backspace') st.deleteSelected()
-    else if (key in arrows && !mod) st.nudge(...arrows[key])
+    else if (mod && key === 'd' && editing) st.duplicateSelected()
+    else if ((key === 'delete' || key === 'backspace') && editing) st.deleteSelected()
+    else if (key in arrows && !mod && editing) st.nudge(...arrows[key])
     else if (key === 'enter' && pen.length) finishPen(pen)
-    else if (!mod && !e.altKey && keyTool[key]) st.setTool(keyTool[key])
+    else if (!mod && !e.altKey && keyTool[key] && editing) st.setTool(keyTool[key])
     else if (key === 'escape') {
       if (pen.length) setPen([])
       else st.setSelection([])
