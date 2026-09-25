@@ -56,7 +56,6 @@ export function moveAt({ moves }: Timeline, t: number): number {
   return lo
 }
 
-// Fraction of move i done at time t, 0..1.
 export function fracAt(m: Move, t: number) {
   const d = m.t1 - m.t0
   return d > 0 ? Math.min(1, Math.max(0, (t - m.t0) / d)) : 1

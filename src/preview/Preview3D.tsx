@@ -116,7 +116,6 @@ function toolModel(T: typeof THREE, bit: Bit, m: View['materials']) {
   return group
 }
 
-// Replaces a named object in the scene, disposing the old one's geometry.
 function replace(view: View, name: string, obj: THREE.Object3D | null) {
   const old = view.scene.getObjectByName(name)
   if (old) {
@@ -378,7 +377,6 @@ export default function Preview3D() {
     sync()
   }, [ready, cam, tl, linesOn, sync])
 
-  // One tool model per bit; sync shows the one for the current move's role.
   useEffect(() => {
     const view = viewRef.current
     if (!view) return

@@ -81,7 +81,6 @@ export const differingFields = (bit: Bit, o: BitOverride): BitOverride =>
 export const findMaterial = (id: string) => MATERIALS.find((m) => m.id === id) ?? MATERIALS[0]
 
 // Material numbers are for a 1/8" bit: feed and plunge scale with diameter (roughly constant chipload), V-bits unscaled.
-// V-bit stepdown is 1 mm.
 export function recommendedSettings(material: Material, bit: Bit, maxRpm: number): CutSettings {
   const vbit = bit.type === 'vbit'
   const rpm = Math.min(material.rpm, maxRpm)

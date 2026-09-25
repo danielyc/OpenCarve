@@ -68,7 +68,6 @@ export function medialAxis(region: PathsD, spacing = SPACING): { chains: MedialP
     const t = len2 ? Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / len2)) : 0
     return dist(x, y, ax + t * (bx - ax), ay + t * (by - ay))
   }
-  // Distance to the boundary segments on either side of the given samples.
   const clearance = (x: number, y: number, gens: number[]) => Math.min(...gens.flatMap((g) => [segDist(x, y, prev[g], g), segDist(x, y, g, next[g])]))
 
   // Voronoi vertices = triangle circumcentres. R: distance to the generators; C: distance to the boundary segments
@@ -114,7 +113,6 @@ export function medialAxis(region: PathsD, spacing = SPACING): { chains: MedialP
     edges.push([t1, t2, a, b])
   }
 
-  // Chain edges into polylines: from every leaf/junction, then the remaining cycles.
   const used = new Uint8Array(edges.length)
   const deg = (t: number) => adj.get(t)!.length
   // Clearance along an edge (distance to two points, or their segments) is convex, not linear: long edges get

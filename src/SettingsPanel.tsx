@@ -131,7 +131,6 @@ function BitOverrideFields({ role }: { role: BitRole }) {
 
 const PREVIEW_LINES = 8
 
-// The user's blocks, with a preview of where they land in the rough file (the current toolpaths, or none yet).
 function GcodeSection() {
   const project = useAppStore((s) => s.project)
   const cam = useAppStore((s) => s.cam)

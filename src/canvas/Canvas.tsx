@@ -433,7 +433,6 @@ export default function Canvas() {
             const polys = shapeToPolylines(s)
             const cls = selection.includes(s.id) ? 'selected' : hover === s.id ? 'hover' : ''
             const { cut } = s
-            // Tab marks sit on the tool-centre loop, where the planner put them.
             const current = planned?.shapes?.includes(s) && cut && tabsActive(cut, stock.thickness)
             const tabs = current ? planned!.ops.filter((o) => o.shapeId === s.id).flatMap((o) => o.tabs ?? []) : []
             return (

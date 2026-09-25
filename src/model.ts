@@ -220,7 +220,6 @@ export const defaultCut = (thickness: number): Cut => ({
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
 
-// Open paths can only be followed.
 export function validCut(s: Shape, cut: Cut, thickness: number): Cut {
   const open = isOpen(s)
   return {

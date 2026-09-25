@@ -33,7 +33,7 @@ export interface Op {
   shapeId: string
   kind: 'outline' | 'pocket' | 'pocket-detail' | 'vcarve' | 'vcarve-clear'
   segments: Segment[]
-  tabs?: Tab[] // outline ops with tabs
+  tabs?: Tab[]
   timeSec?: number // set by planProject
 }
 // A tab's middle on the tool-centre loop, the loop's direction there (radians from +X) and its raised length.
@@ -261,7 +261,6 @@ function clipBand(pts: MedialPoint[], lo: number, hi: number): MedialPoint[][] {
   for (let i = 1; i < pts.length; i++) {
     const [a, b] = [pts[i - 1], pts[i]]
     const dc = b[2] - a[2]
-    // Parameter range of the segment inside the band.
     let [t0, t1] = [0, 1]
     if (dc) {
       const [u, v] = [(lo - a[2]) / dc, (hi - a[2]) / dc]

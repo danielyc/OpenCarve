@@ -94,7 +94,6 @@ export function retryFailedPreviews() {
   failed.clear()
 }
 
-// A removed uploaded font's preview face is unregistered too.
 export function forgetPreview(id: string) {
   const fonts = globalThis.document?.fonts
   const family = previewFamily(id)

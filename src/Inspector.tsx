@@ -10,8 +10,6 @@ import { useAppStore } from './store'
 
 // `live` commits on every keystroke; the whole focus session is a single undo entry.
 // `multiline` makes it a textarea (Enter adds a line, Escape leaves); its aria-label keeps the typed text out of its name.
-// `step` makes it a number input. `describedBy` + `invalid` point at an error shown next to the field.
-// `mono` makes a taller monospace textarea for code.
 export function Field(props: { label: string; value: string; onCommit: (text: string) => void; wide?: boolean; live?: boolean; multiline?: boolean; mono?: boolean; step?: number; invalid?: boolean; describedBy?: string }) {
   const { label, value, onCommit, wide, live, multiline, mono, step, invalid, describedBy } = props
   const [draft, setDraft] = useState<string | null>(null)
@@ -61,7 +59,6 @@ export function Section({ title, children }: { title: string; children: ReactNod
   )
 }
 
-// The canvas arrow on each outline points to the side the bit runs on.
 const SIDE_HINTS: Record<string, string> = {
   outside: 'Outside: the bit runs outside the line (arrow), so the part keeps its size.',
   inside: 'Inside: the bit runs inside the line (arrow), so the hole keeps its size.',
@@ -74,7 +71,6 @@ let slider = 0
 const ALIGN_ICONS = { left: 'M2 4h12M2 8h8M2 12h10', center: 'M2 4h12M4 8h8M3 12h10', right: 'M2 4h12M6 8h8M4 12h10' }
 
 // Native radios give arrow-key navigation; an empty value (mixed selection) leaves all unchecked.
-// `hint` explains any disabled options and is shown under the group.
 export function Segmented<T extends string>(props: { label: string; value: string; options: { value: T; label: string; disabled?: boolean }[]; hint?: string; onChange: (v: T) => void }) {
   const { label, value, options, hint, onChange } = props
   const id = useId()
@@ -213,7 +209,6 @@ function CutSection({ selected }: { selected: Shape[] }) {
   )
 }
 
-// Design with nothing selected: the project settings at a glance.
 function ProjectSummary() {
   const project = useAppStore((s) => s.project)
   const { stock, units, bits } = project

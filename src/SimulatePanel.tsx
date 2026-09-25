@@ -18,7 +18,6 @@ const KIND_LABEL: Record<Exclude<Op['kind'], 'outline'>, string> = {
   'vcarve-clear': 'V-carve clearing',
 }
 
-// Job summary shared by the Simulate and Export panels.
 export function Summary() {
   const project = useAppStore((s) => s.project)
   const { materialId, stock, bits, units, origin } = project
@@ -76,7 +75,6 @@ export default function SimulatePanel() {
   const busy = useAppStore((s) => s.camBusy)
   const highlight = useAppStore((s) => s.highlightOp)
   const settings = useAppStore((s) => s.project.cutSettings)
-  // Clicking an op also seeks the animation to where that op starts.
   const seek = (i: number) => {
     const start = cam ? timelineFor(cam.ops, settings).moves.find((m) => m.op === i)?.t0 : undefined
     if (start !== undefined) useAppStore.getState().setAnim({ t: start })

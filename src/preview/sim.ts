@@ -46,7 +46,6 @@ function profile(bit: Bit) {
   return { r, slope: 0, flat: r, dz: () => 0 }
 }
 
-// A heightmap that tools are stamped into one move at a time.
 export function createSim({ stock, bits, resolution }: Omit<SimInput, 'id' | 'ops'>) {
   const cell = resolution ?? gridCellSize(stock.w, stock.h)
   const width = Math.ceil(stock.w / cell - 1e-9) + 1
