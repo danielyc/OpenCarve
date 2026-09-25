@@ -8,6 +8,7 @@ import type { SimResult } from './preview/sim'
 import { defaultCut, newId, newProject, validCut, type BitRole, type Cut, type CutSettings, type Project, type Shape, type ShapePatch } from './model'
 
 export type Step = 'design' | 'simulate' | 'export'
+export type Screen = 'home' | 'editor'
 export type Tool = 'select' | 'rect' | 'ellipse' | 'polygon' | 'pen' | 'text'
 export type Align = 'left' | 'centerX' | 'right' | 'top' | 'centerY' | 'bottom'
 export interface View {
@@ -20,6 +21,8 @@ const MAX_HISTORY = 100
 const FIT_MARGIN = 40
 
 interface AppState {
+  screen: Screen
+  saving: boolean
   step: Step
   project: Project
   selection: string[]
@@ -35,6 +38,10 @@ interface AppState {
   sim: SimResult | null
   simBusy: boolean
   setStep: (step: Step) => void
+  setScreen: (screen: Screen) => void
+  newProject: () => void
+  loadProject: (project: Project) => void
+  setProjectName: (name: string) => void
   addShape: (shape: Shape) => void
   addShapes: (shapes: Shape[]) => void
   updateShapes: (ids: string[], patch: ShapePatch | ((s: Shape) => Shape)) => void
@@ -93,6 +100,8 @@ export const useAppStore = create<AppState>()((set, get) => {
   }
 
   return {
+    screen: 'home',
+    saving: false,
     step: 'design',
     project: newProject(),
     selection: [],
@@ -108,6 +117,12 @@ export const useAppStore = create<AppState>()((set, get) => {
     sim: null,
     simBusy: false,
     setStep: (step) => set({ step }),
+    setScreen: (screen) => set({ screen }),
+    newProject: () => get().loadProject(newProject()),
+    // Opens a project in the editor with fresh history and editor state (the editor remounts per project id, refitting the view).
+    loadProject: (project) =>
+      set({ project, screen: 'editor', step: 'design', tool: 'select', selection: [], past: [], future: [], transientBase: null, cam: null, sim: null }),
+    setProjectName: (name) => setProject((p) => ({ ...p, name })),
 
     addShape: (shape) => get().addShapes([shape]),
     addShapes: (shapes) => {

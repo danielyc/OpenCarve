@@ -662,3 +662,181 @@ button:disabled {
 .swatch.detail::before {
   background: #9333ea;
 }
+
+/* Persistence: project menu and home screen */
+.project-menu {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.project-menu .brand {
+  margin-right: 6px;
+}
+
+.menu-button,
+.home button,
+.project-actions .menu button {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.menu-button:hover,
+.home button:hover,
+.project-actions .menu button:hover {
+  background: var(--bg);
+}
+
+.project-name {
+  min-width: 0;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 4px 6px;
+  font: inherit;
+  font-weight: 500;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+}
+
+button.project-name:hover {
+  border-color: var(--border);
+}
+
+input.project-name {
+  width: 220px;
+  border-color: var(--accent);
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+}
+
+.save-status {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.project-actions {
+  position: relative;
+}
+
+.project-actions summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.project-actions summary::-webkit-details-marker {
+  display: none;
+}
+
+.project-actions .menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 150px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.1);
+}
+
+.project-actions .menu button {
+  border-color: transparent;
+  text-align: left;
+}
+
+.home {
+  height: 100dvh;
+  overflow: auto;
+}
+
+.home-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 48px;
+  padding: 0 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.home-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.home button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.home button.primary:hover {
+  background: #1d4ed8;
+}
+
+.home-main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 16px;
+}
+
+.home-main h2 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.project-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.project-list:empty {
+  display: none;
+}
+
+.project-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.project-list li + li {
+  border-top: 1px solid var(--border);
+}
+
+.project-info {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.project-info strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.project-info span {
+  font-size: 11px;
+  color: var(--muted);
+}

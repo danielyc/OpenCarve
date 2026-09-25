@@ -6,6 +6,7 @@ import { icons } from './icons'
 import Inspector from './Inspector'
 import { importSvg } from './lib/svgImport'
 import Preview3D from './preview/Preview3D'
+import ProjectMenu from './ProjectMenu'
 import { useAppStore, type Step, type Tool } from './store'
 
 const STEPS: { id: Step; label: string }[] = [
@@ -62,7 +63,7 @@ export default function App() {
       }}
     >
       <header className="topbar">
-        <h1 className="brand">OpenCarve</h1>
+        <ProjectMenu />
         <nav className="steps" aria-label="Workflow step">
           {STEPS.map((s) => (
             <button key={s.id} aria-pressed={step === s.id} onClick={() => setStep(s.id)}>

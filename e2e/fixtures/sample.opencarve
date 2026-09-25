@@ -1,0 +1,39 @@
+{
+  "format": "opencarve",
+  "version": 1,
+  "project": {
+    "id": "sample",
+    "name": "Sample sign",
+    "units": "mm",
+    "stock": { "w": 200, "h": 120, "thickness": 12 },
+    "materialId": "mdf",
+    "bits": { "rough": "1/8-endmill" },
+    "shapes": [
+      {
+        "id": "frame",
+        "type": "rect",
+        "name": "Frame",
+        "x": 100,
+        "y": 60,
+        "rotation": 0,
+        "w": 180,
+        "h": 100,
+        "cut": { "type": "outline", "side": "outside", "depth": 12, "tabs": true, "tabCount": 4, "tabWidth": 6, "tabHeight": 3 }
+      },
+      {
+        "id": "label",
+        "type": "text",
+        "name": "Label",
+        "x": 100,
+        "y": 60,
+        "rotation": 0,
+        "text": "Hi",
+        "font": "roboto",
+        "size": 40,
+        "w": 38,
+        "h": 29,
+        "cut": { "type": "pocket", "side": "inside", "depth": 2, "tabs": false, "tabCount": 4, "tabWidth": 6, "tabHeight": 3 }
+      }
+    ]
+  }
+}

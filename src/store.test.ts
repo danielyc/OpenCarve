@@ -161,3 +161,17 @@ test('custom settings are dropped when that role gets a different bit', () => {
   expect(store().project.cutSettingsCustom.rough).toBe(false)
   expect(store().project.cutSettings.rough.stepdown).toBeLessThan(1)
 })
+
+test('loadProject replaces the project and clears history and selection', () => {
+  store().addShape(rect('a', 10, 10))
+  store().undo()
+  store().addShape(rect('b', 10, 10))
+  const other = { ...newProject(), name: 'Other', shapes: [rect('c', 0, 0)] }
+  store().loadProject(other)
+  expect(store()).toMatchObject({ project: other, screen: 'editor', selection: [], past: [], future: [], transientBase: null })
+  store().undo()
+  expect(store().project).toBe(other)
+  store().newProject()
+  expect(store().project.id).not.toBe(other.id)
+  expect(store().project.shapes).toEqual([])
+})

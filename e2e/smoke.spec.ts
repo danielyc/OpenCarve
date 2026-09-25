@@ -1,7 +1,12 @@
 import { expect, test } from '@playwright/test'
 
-test('loads the app shell', async ({ page }) => {
+// Each test gets a fresh browser context (empty IndexedDB), so the app opens on the home screen.
+test.beforeEach(async ({ page }) => {
   await page.goto('/')
+  await page.getByRole('button', { name: 'New project' }).click()
+})
+
+test('loads the app shell', async ({ page }) => {
   await expect(page).toHaveTitle('OpenCarve')
   for (const name of ['Design', 'Simulate', 'Export']) {
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
@@ -9,7 +14,6 @@ test('loads the app shell', async ({ page }) => {
 })
 
 test('draws a rectangle and undoes it', async ({ page }) => {
-  await page.goto('/')
   await page.getByRole('button', { name: 'Rectangle' }).click()
   await expect(page.getByRole('button', { name: 'Rectangle' })).toHaveAttribute('aria-pressed', 'true')
   const box = (await page.getByLabel('Design canvas').boundingBox())!
@@ -36,7 +40,6 @@ test('draws a rectangle and undoes it', async ({ page }) => {
 })
 
 test('draws a path with the pen tool', async ({ page }) => {
-  await page.goto('/')
   await page.getByRole('button', { name: 'Pen' }).click()
   const box = (await page.getByLabel('Design canvas').boundingBox())!
   const cx = box.x + box.width / 2
@@ -48,7 +51,6 @@ test('draws a path with the pen tool', async ({ page }) => {
 })
 
 test('places a text shape with the text tool', async ({ page }) => {
-  await page.goto('/')
   await page.getByRole('button', { name: 'Text' }).click()
   const box = (await page.getByLabel('Design canvas').boundingBox())!
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
@@ -58,14 +60,12 @@ test('places a text shape with the text tool', async ({ page }) => {
 })
 
 test('imports an SVG file', async ({ page }) => {
-  await page.goto('/')
-  await page.locator('input[type=file]').setInputFiles('e2e/fixtures/shapes.svg')
+  await page.locator('input[accept*=svg]').setInputFiles('e2e/fixtures/shapes.svg')
   await expect(page.locator('[data-id]')).toHaveCount(3)
   await expect(page.getByRole('heading', { name: '3 shapes' })).toBeVisible()
 })
 
 test('sets a rectangle to a pocket cut', async ({ page }) => {
-  await page.goto('/')
   await page.getByRole('button', { name: 'Rectangle' }).click()
   const box = (await page.getByLabel('Design canvas').boundingBox())!
   await page.mouse.move(box.x + box.width / 2 - 50, box.y + box.height / 2 - 30)
@@ -87,7 +87,6 @@ test('sets a rectangle to a pocket cut', async ({ page }) => {
 })
 
 test('exports G-code for a rectangle', async ({ page }) => {
-  await page.goto('/')
   await page.getByRole('button', { name: 'Rectangle' }).click()
   const box = (await page.getByLabel('Design canvas').boundingBox())!
   await page.mouse.move(box.x + box.width / 2 - 50, box.y + box.height / 2 - 30)
@@ -105,7 +104,6 @@ test('exports G-code for a rectangle', async ({ page }) => {
 })
 
 test('exports a V-carve with a V-bit as the detail bit', async ({ page }) => {
-  await page.goto('/')
   await page.getByLabel('Detail bit').selectOption('90-vbit')
   await page.getByRole('button', { name: 'Rectangle' }).click()
   const box = (await page.getByLabel('Design canvas').boundingBox())!
