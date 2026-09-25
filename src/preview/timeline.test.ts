@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { planProject } from '../cam/toolpath'
 import { findBit, findMaterial, recommendedSettings } from '../lib/library'
 import { defaultCut, newProject, type Project, type RectShape } from '../model'
+import type { Pt3 } from '../cam/toolpath'
+import { surfaceMesh, surfaceRows } from './mesh'
 import { progress, simulate } from './sim'
+import type { Move } from './timeline'
 import { buildTimeline, moveAt, positionAt } from './timeline'
 
 const rect = (id: string, x: number, y: number, extra: Partial<RectShape>): RectShape => ({ id, type: 'rect', name: id, x, y, rotation: 0, w: 40, h: 30, ...extra })
@@ -72,5 +75,36 @@ describe('progressive removal', () => {
     const back = progress(input, moves, progress(input, moves, null, { move: n, frac: 0 }), { move: k, frac: 0 })
     expect(heights(back)).toEqual(heights(progress(input, moves, null, { move: k, frac: 0 })))
     expect(heights(back)).not.toEqual(heights(progress(input, moves, null, { move: n, frac: 0 })))
+  })
+
+  it('a partial V-carve ramp stamped at stepped fractions ends exactly like the whole move', () => {
+    const vin = { stock: { w: 40, h: 20, thickness: 12 }, bits: { rough: findBit('60-vbit') }, resolution: 0.1 }
+    const ramp = (a: Pt3, b: Pt3): Move => ({ a, b, t0: 0, t1: 1, op: 0, role: 'rough', cut: true })
+    const vmoves = [ramp([5, 10, -0.2], [35, 12, -3]), ramp([35, 12, -3], [20, 5, -1])]
+    let state = null
+    for (const [move, frac] of [[0, 0.13], [0, 0.37], [0, 0.61], [1, 0.08], [1, 0.9], [2, 0]]) state = progress(vin, vmoves, state, { move, frac })
+    const once = progress(vin, vmoves, null, { move: 2, frac: 0 })
+    const [a, b] = [heights(state!), heights(once)]
+    expect(Math.max(...a.map((h, i) => Math.abs(h - b[i])))).toBeLessThan(1e-5)
+    expect(Math.min(...b)).toBeLessThan(-2.5)
+  })
+
+  it('reports the rows it changed, including rows reset when starting over', () => {
+    const s1 = progress(input, moves, null, { move: k, frac: 0 })
+    const d1 = s1.sim.takeDirty()
+    expect(d1.lo).toBeLessThanOrEqual(d1.hi)
+    expect(s1.sim.takeDirty().lo).toBe(Infinity) // nothing new since
+    const s2 = progress(input, moves, s1, { move: 1, frac: 0 }) // backwards: the cut rows go back to stock
+    const d2 = s2.sim.takeDirty()
+    expect(d2.lo).toBeLessThanOrEqual(d1.lo)
+    expect(d2.hi).toBeGreaterThanOrEqual(d1.hi)
+  })
+
+  it('builds the same vertices for a band of rows as for the whole surface', () => {
+    const r = simulate({ ...input, id: 0, ops: cam.ops })
+    const full = surfaceMesh(r)
+    const band = surfaceRows(r, 20, 60)
+    const off = 20 * r.width * 3
+    for (const key of ['positions', 'normals', 'colors'] as const) expect(band[key]).toEqual(full[key].slice(off, off + band[key].length))
   })
 })

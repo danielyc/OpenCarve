@@ -2,13 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type * as THREE from 'three'
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import type { Op, Pt3 } from '../cam/toolpath'
-import { findBit } from '../lib/library'
+import { effectiveBit } from '../lib/library'
 import type { Bit } from '../model'
 import { useAppStore } from '../store'
 import PlaybackBar from './PlaybackBar'
 import type { SurfaceMesh } from './sim'
 import { fracAt, moveAt, positionAt, timelineFor, type Timeline } from './timeline'
-import { requestProgress, useSim } from './useSim'
+import { onProgress, requestProgress, useSim } from './useSim'
 
 // Model → three: X → x, Y → −z, Z → y (three is Y-up with Z toward the viewer). The surface mesh is built in the sim worker.
 const SIDES = 0xd8bd92
@@ -144,7 +144,7 @@ export default function Preview3D() {
   const step = useAppStore((s) => s.step)
   const settings = useAppStore((s) => s.project.cutSettings)
   const bits = useAppStore((s) => s.project.bits)
-  const simProgress = useAppStore((s) => s.simProgress)
+  const bitOverrides = useAppStore((s) => s.project.bitOverrides)
   const playing = useAppStore((s) => s.anim.playing)
   const tl = useMemo(() => (cam ? timelineFor(cam.ops, settings) : null), [cam, settings])
   const [showLines, setShowLines] = useState(true)
@@ -278,13 +278,31 @@ export default function Preview3D() {
     sync()
   }, [ready, sim, sync])
 
+  // Progressive removal: one persistent geometry per job; each update rewrites only the rows that changed.
   useEffect(() => {
-    const view = viewRef.current
-    if (!view) return
-    const mesh = simProgress?.mesh ? new view.T.Mesh(surfaceGeometry(view.T, simProgress.mesh), view.materials.surface) : null
-    objs.current.progress = replace(view, 'progress', mesh)
-    sync()
-  }, [ready, simProgress, sync])
+    onProgress((u) => {
+      const view = viewRef.current
+      if (!view) return false
+      if (u.index) {
+        const mesh = new view.T.Mesh(surfaceGeometry(view.T, u as SurfaceMesh), view.materials.surface)
+        mesh.frustumCulled = false // the bounding sphere of the flat start would go stale
+        objs.current.progress = replace(view, 'progress', mesh)
+      } else if (u.positions) {
+        const geometry = (objs.current.progress as THREE.Mesh | null | undefined)?.geometry
+        const off = u.r0 * u.width * 3
+        const attrs = geometry && (['position', 'normal', 'color'] as const).map((n) => geometry.getAttribute(n) as THREE.BufferAttribute)
+        if (!attrs || off + u.positions.length > attrs[0].array.length) return false
+        ;[u.positions, u.normals!, u.colors!].forEach((data, k) => {
+          ;(attrs[k].array as Float32Array).set(data, off)
+          attrs[k].addUpdateRange(off, data.length)
+          attrs[k].needsUpdate = true
+        })
+      } else if (!objs.current.progress) return false
+      sync()
+      return true
+    })
+    return () => onProgress(null)
+  }, [sync])
 
   const linesOn = step === 'simulate' && showLines
   useEffect(() => {
@@ -313,13 +331,12 @@ export default function Preview3D() {
     if (step === 'simulate' && tl?.moves.length) {
       tool = new view.T.Group()
       for (const role of ['rough', 'detail'] as const) {
-        const id = bits[role]
-        if (id) tool.add(Object.assign(toolModel(view.T, findBit(id), view.materials), { name: role }))
+        if (bits[role]) tool.add(Object.assign(toolModel(view.T, effectiveBit({ bits, bitOverrides }, role), view.materials), { name: role }))
       }
     }
     objs.current.tool = replace(view, 'tool', tool)
     sync()
-  }, [ready, tl, step, bits, sync])
+  }, [ready, tl, step, bits, bitOverrides, sync])
 
   useEffect(() => {
     if (step !== 'simulate') useAppStore.getState().setAnim({ playing: false })

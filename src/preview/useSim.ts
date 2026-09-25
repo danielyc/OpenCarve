@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { effectiveBit } from '../lib/library'
 import { useAppStore } from '../store'
 import type { SimInput, SimResult } from './sim'
-import type { ProgressRequest } from './simWorker'
+import type { ProgressRequest, ProgressUpdate } from './simWorker'
 
 const DEBOUNCE_MS = 200
 let worker: Worker | null = null
@@ -20,6 +20,14 @@ let want = -1 // wanted move index, −1 for none
 let wantFrac = 0
 let sent = -1
 let sentFrac = 0
+let needFull = false
+let listener: ((u: ProgressUpdate) => boolean) | null = null
+
+// The preview applies each update to its geometry, returning false when it has none to apply a partial one to.
+export function onProgress(fn: typeof listener) {
+  listener = fn
+  needFull = true
+}
 
 export function requestProgress(move: number, frac: number) {
   want = move
@@ -40,29 +48,33 @@ function pump() {
   inFlight = true
   sentAt = performance.now()
   ;[sent, sentFrac, progressBase] = [want, wantFrac, latest]
-  worker.postMessage({ id: ++progressId, kind: 'progress', upTo: { move: want, frac: wantFrac } } satisfies ProgressRequest)
+  worker.postMessage({ id: ++progressId, kind: 'progress', upTo: { move: want, frac: wantFrac }, full: needFull } satisfies ProgressRequest)
+  needFull = false
 }
 
 function run(input: Omit<SimInput, 'id'>) {
   if (!worker) {
     worker = new Worker(new URL('./simWorker.ts', import.meta.url), { type: 'module' })
-    worker.onmessage = (e: MessageEvent<SimResult>) => {
+    worker.onmessage = (e: MessageEvent<SimResult | ProgressUpdate>) => {
       const current = latestProject === useAppStore.getState().project.id
-      if (e.data.progress) {
+      if ('progress' in e.data) {
         inFlight = false
-        if (current && e.data.id === progressId && progressBase === latest) useAppStore.setState({ simProgress: e.data })
+        if (current && e.data.id === progressId && progressBase === latest && !listener?.(e.data)) {
+          needFull = true
+          sent = -1
+        }
       } else if (e.data.id === latest && current) useAppStore.setState({ sim: e.data, simBusy: false })
       pump()
     }
     worker.onerror = (e) => {
       console.error('Simulation failed', e.message)
+      inFlight = false
       useAppStore.setState({ simBusy: false })
     }
   }
   latestProject = useAppStore.getState().project.id
   worker.postMessage({ ...input, id: ++latest })
   sent = -1 // the worker starts progress over for the new job
-  useAppStore.setState({ simProgress: null })
 }
 
 export function useSim() {

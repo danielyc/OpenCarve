@@ -112,6 +112,7 @@ test('plays and scrubs the toolpath animation', async ({ page }) => {
   const total = await bar.locator('.playback-total').textContent()
   await expect(current).toHaveText(total!) // starts at the end, showing the finished job
 
+  await bar.getByRole('checkbox', { name: 'Material removal' }).uncheck() // unit-tested; keeps the software-rendered run light
   await bar.getByRole('button', { name: 'Play animation' }).click()
   await expect(bar.getByRole('button', { name: 'Pause animation' })).toBeVisible()
   await page.waitForTimeout(1000)
@@ -124,4 +125,6 @@ test('plays and scrubs the toolpath animation', async ({ page }) => {
   await slider.focus()
   await page.keyboard.press('End')
   await expect(current).toHaveText(total!)
+  expect(await bar.getAttribute('data-anim-t')).toBe(await bar.getAttribute('data-anim-total')) // exactly the end
+  await expect(bar.getByRole('button', { name: 'Play animation' })).toBeVisible()
 })

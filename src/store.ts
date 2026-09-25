@@ -46,7 +46,6 @@ interface AppState {
   simBusy: boolean
   highlightOp: string | null // opKey of the op picked in the Simulate panel
   anim: Anim // toolpath animation; t is mirrored from the preview's frame loop at ~10 Hz
-  simProgress: SimResult | null // progressive-removal snapshot for the animation
   setAnim: (patch: Partial<Anim>) => void
   setStep: (step: Step) => void
   setScreen: (screen: Screen) => void
@@ -132,7 +131,6 @@ export const useAppStore = create<AppState>()((set, get) => {
     simBusy: false,
     highlightOp: null,
     anim: { playing: false, t: 0, speed: 1, removal: true },
-    simProgress: null,
     setAnim: (patch) => set((s) => ({ anim: { ...s.anim, ...patch } })),
     setStep: (step) => set({ step }),
     setScreen: (screen) => set({ screen }),
