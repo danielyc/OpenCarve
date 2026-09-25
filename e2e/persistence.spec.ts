@@ -60,7 +60,7 @@ test('opens a .opencarve file with text and plans its toolpaths', async ({ page 
   await expect(page.locator('[data-id]')).toHaveCount(2)
   // The text's glyph outlines (several contours, not the placeholder box) render once its font loads lazily.
   await expect(page.locator('[data-id=label] path.hit')).toHaveAttribute('d', /(Z.*){3}/)
-  await page.getByRole('button', { name: 'Simulate', exact: true }).click()
+  await page.getByRole('button', { name: /^Simulate/ }).click()
   await expect(page.locator('.toolpath-rough')).toHaveAttribute('d', /M/)
 
   await page.getByRole('button', { name: 'Home' }).click()

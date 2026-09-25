@@ -225,8 +225,24 @@ describe('plan and gcode', () => {
     expect(planProject(p).ops.map((o) => o.shapeId)).toEqual(['c', 'b', 'a'])
     expect(r.timeSec.rough).toBeGreaterThan(0)
   })
+  it('per-op times sum to each bit time', () => {
+    const p = project([...sample().shapes, { ...rect(50, 50), id: 'd', x: 150, y: 150, cut: { ...defaultCut(12), type: 'pocket', depth: 3 } }], '6mm-endmill', '1mm-endmill')
+    const r = planProject(p)
+    for (const role of ['rough', 'detail'] as const) {
+      const ops = r.ops.filter((o) => o.role === role)
+      expect(ops.length).toBeGreaterThan(0)
+      expect(ops.every((o) => o.timeSec! > 0)).toBe(true)
+      expect(ops.reduce((a, o) => a + o.timeSec!, 0)).toBeCloseTo(r.timeSec[role], 6)
+    }
+  })
+  it('warns when the stock is larger than the machine work area', () => {
+    const p = { ...sample(), machine: { name: '3018', w: 300, h: 180, maxRpm: 10000 } }
+    expect(planProject(p).warnings).toContain('Stock (300×200 mm) is larger than the machine work area (300×180 mm)')
+    expect(planProject(sample()).warnings).toEqual([])
+    expect(planProject({ ...p, units: 'in' }).warnings).toContain('Stock (11.811×7.874 in) is larger than the machine work area (11.811×7.087 in)')
+  })
   it('warns about nothing to carve, v-carve and out-of-stock shapes', () => {
-    expect(planProject(project([])).warnings).toEqual(['Nothing to carve'])
+    expect(planProject(project([])).warnings).toEqual([])
     const w = planProject(project([{ ...rect(10, 10), x: -2, cut: { ...defaultCut(12), type: 'vcarve' } }, { ...rect(10, 10), id: 'z', x: -2, cut: defaultCut(12) }])).warnings
     expect(w).toEqual(['V-carve needs a V-bit', 'Rect is partly outside the stock'])
   })

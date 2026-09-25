@@ -8,7 +8,7 @@ import { useSim } from './useSim'
 
 // Model → three: X → x, Y → −z, Z → y (three is Y-up with Z toward the viewer). The surface mesh is built in the sim worker.
 const SIDES = 0xd8bd92
-const LINE_COLORS = { rough: 0x2563eb, detail: 0x9333ea }
+const LINE_COLORS = { rough: 0x2563eb, detail: 0x9333ea, vcarve: 0xea580c } // as the 2D overlay
 const LINE_LIFT = 0.05 // mm, keeps toolpath lines out of the cut floor
 const VIEW_DIR: [number, number, number] = [-0.5, 0.9, 1] // front-left-top
 
@@ -45,7 +45,7 @@ function surfaceGeometry(T: typeof THREE, mesh: SurfaceMesh) {
 function toolpathGeometry(T: typeof THREE, ops: Op[]) {
   const pos: number[] = []
   const col: number[] = []
-  const colors = { rough: new T.Color(LINE_COLORS.rough), detail: new T.Color(LINE_COLORS.detail) }
+  const colors = { rough: new T.Color(LINE_COLORS.rough), detail: new T.Color(LINE_COLORS.detail), vcarve: new T.Color(LINE_COLORS.vcarve) }
   let prev: number[] | null = null
   for (const op of ops)
     for (const seg of op.segments)
@@ -53,7 +53,7 @@ function toolpathGeometry(T: typeof THREE, ops: Op[]) {
         const p = [x, z + LINE_LIFT, -y]
         if (prev && !seg.rapid) {
           pos.push(...prev, ...p)
-          const { r, g, b } = colors[op.role]
+          const { r, g, b } = colors[op.kind === 'vcarve' ? 'vcarve' : op.role]
           col.push(r, g, b, r, g, b)
         }
         prev = p
@@ -225,6 +225,7 @@ export default function Preview3D() {
           </label>
           <span className="swatch rough">Rough</span>
           <span className="swatch detail">Detail</span>
+          <span className="swatch vcarve">V-carve</span>
         </div>
       )}
     </section>
