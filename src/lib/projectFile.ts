@@ -92,18 +92,32 @@ function shape(v: unknown, i: number, thickness: number, warn: (msg: string) => 
         font = FONTS[0].id
       }
       const sz = num(o, 'size', what, undefined, 0)
+      // Older saves could shrink the size below twice a negative spacing; clamp rather than refuse the file.
+      const spacing = () => {
+        const v = num(o, 'letterSpacing', what, 0)
+        if (v >= -sz / 2) return v
+        warn(`Letter spacing of "${base.name}" was tighter than half its size; set to ${-sz / 2} mm.`)
+        return -sz / 2
+      }
       const range = (key: string, def: number, min: number, max: number) => {
         const v = num(o, key, what, def, min)
         return v <= max ? v : fail(`${what}.${key} must be ≤ ${max}`)
       }
+      // w/h are a cache of the glyph bounds; a missing or broken one (e.g. NaN saved as null) is estimated, not fatal.
+      const text = str(o, 'text', what)
+      const box = (key: string, estimate: number) => {
+        const v = o[key]
+        return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : estimate
+      }
       s = {
         ...base,
         type,
-        ...size(),
-        text: str(o, 'text', what),
+        w: box('w', 0.6 * sz * Math.max(...text.split(/\r?\n/).map((l) => l.length))),
+        h: box('h', sz),
+        text,
         font,
         size: sz,
-        letterSpacing: num(o, 'letterSpacing', what, 0, -sz / 2),
+        letterSpacing: spacing(),
         lineHeight: range('lineHeight', 1.2, 0.5, 3),
         align: oneOf(o, 'align', what, ['left', 'center', 'right'] as const, 'center'),
         arc: range('arc', 0, -360, 360),

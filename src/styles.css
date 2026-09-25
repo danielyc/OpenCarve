@@ -1098,3 +1098,11 @@ input.project-name {
 .bend input[type='range'] {
   margin: 0 0 6px;
 }
+
+.fields > .subhead {
+  grid-column: 1 / -1;
+  margin: 4px 0 -2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}

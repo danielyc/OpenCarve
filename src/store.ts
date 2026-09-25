@@ -65,8 +65,8 @@ interface AppState {
   setUnits: (units: Units) => void
   setView: (patch: Partial<View>) => void
   fitView: (width: number, height: number) => void
-  beginTransient: () => void
-  commit: () => void
+  beginTransient: () => number
+  commit: (gesture?: number) => void
   cancelTransient: () => void
 }
 
@@ -85,6 +85,8 @@ function recommended(p: Project): Project {
     cutSettingsCustom: detail ? p.cutSettingsCustom : { ...p.cutSettingsCustom, detail: false },
   }
 }
+
+let gesture = 0
 
 export const useAppStore = create<AppState>()((set, get) => {
   // During a transient gesture, edits replace the project without recording history; commit() records one entry.
@@ -265,9 +267,16 @@ export const useAppStore = create<AppState>()((set, get) => {
       set({ view: { zoom, panX: (width - w * zoom) / 2, panY: (height + h * zoom) / 2 } })
     },
 
-    beginTransient: () => set((s) => ({ transientBase: s.project })),
-    commit: () =>
+    // Gestures can overlap (a slider pressed while a text field still has focus): starting one commits the open one,
+    // and commit(gesture) only ends the transient if it is still that gesture's, so a late blur can't end the next.
+    beginTransient: () => {
+      get().commit()
+      set((s) => ({ transientBase: s.project }))
+      return ++gesture
+    },
+    commit: (id) =>
       set((s) => {
+        if (id !== undefined && id !== gesture) return {}
         const base = s.transientBase
         if (!base || JSON.stringify(base) === JSON.stringify(s.project)) return { transientBase: null }
         return { past: pushHistory(s.past, base), future: [], transientBase: null }

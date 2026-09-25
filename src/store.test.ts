@@ -175,3 +175,20 @@ test('loadProject replaces the project and clears history and selection', () => 
   expect(store().project.id).not.toBe(other.id)
   expect(store().project.shapes).toEqual([])
 })
+
+test('overlapping transients become separate undo entries and a late commit only ends its own', () => {
+  store().addShape(rect('a', 10, 10))
+  const text = store().beginTransient() // e.g. a focused text field
+  store().updateShapes(['a'], { x: 20 })
+  const slider = store().beginTransient() // a slider pressed before the field blurs
+  store().updateShapes(['a'], { x: 30 })
+  store().commit(text) // the field's late blur
+  store().updateShapes(['a'], { x: 40 })
+  store().commit(slider)
+  expect(store().transientBase).toBeNull()
+  expect(store().past).toHaveLength(3)
+  store().undo()
+  expect(store().project.shapes[0].x).toBe(20)
+  store().undo()
+  expect(store().project.shapes[0].x).toBe(10)
+})

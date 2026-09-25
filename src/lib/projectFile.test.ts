@@ -81,7 +81,23 @@ test('clamps polygon sides and renames duplicate shape ids', () => {
 test('fills text layout defaults for old files and rejects out-of-range values', () => {
   const text = { id: 't', type: 'text', x: 0, y: 0, text: 'A', font: 'roboto', size: 10, w: 5, h: 7 }
   expect(parseProject(file({ ...sample(), shapes: [text] })).shapes[0]).toMatchObject({ letterSpacing: 0, lineHeight: 1.2, align: 'center', arc: 0, mirror: false })
-  for (const [key, bad] of [['letterSpacing', -6], ['lineHeight', 0.4], ['lineHeight', 3.5], ['arc', 400], ['arc', -361], ['align', 'justify'], ['mirror', 'yes']] as const) {
+  for (const [key, bad] of [['lineHeight', 0.4], ['lineHeight', 3.5], ['arc', 400], ['arc', -361], ['align', 'justify'], ['mirror', 'yes']] as const) {
     expect(() => parseProject(file({ ...sample(), shapes: [{ ...text, [key]: bad }] }))).toThrow(new RegExp(`shapes\\[0\\].${key}`))
   }
+})
+
+test('clamps letter spacing tighter than half the size, with a warning, and the result round-trips', () => {
+  const text = { id: 't', type: 'text', name: 'Sign', x: 0, y: 0, text: 'A', font: 'roboto', size: 10, w: 5, h: 7, letterSpacing: -10 }
+  const warnings: string[] = []
+  const p = parseProject(file({ ...sample(), shapes: [text] }), warnings)
+  expect(p.shapes[0]).toMatchObject({ letterSpacing: -5 })
+  expect(warnings).toEqual([expect.stringMatching(/Letter spacing of "Sign"/)])
+  expect(parseProject(serializeProject(p))).toEqual(p)
+})
+
+test('a text with a broken bounds cache (NaN saved as null) still opens, with an estimate', () => {
+  const text = { id: 't', type: 'text', x: 0, y: 0, text: 'Hi', font: 'roboto', size: 10, w: null, h: null, arc: 1e-320 }
+  const p = parseProject(file({ ...sample(), shapes: [text] }))
+  expect(p.shapes[0]).toMatchObject({ w: 12, h: 10, arc: 1e-320 })
+  expect(parseProject(serializeProject(p))).toEqual(p)
 })

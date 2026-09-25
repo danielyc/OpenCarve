@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useId, useRef, useState, type ReactNode } from 'react'
 import { FONTS, loadFont } from './lib/fonts'
 import { fitText, localBounds, scaleShape } from './lib/geometry'
 import { BITS, findBit, findMaterial, MACHINES, MATERIALS } from './lib/library'
@@ -12,6 +12,7 @@ import { useAppStore } from './store'
 function Field(props: { label: string; value: string; onCommit: (text: string) => void; wide?: boolean; live?: boolean; multiline?: boolean; step?: number }) {
   const { label, value, onCommit, wide, live, multiline, step } = props
   const [draft, setDraft] = useState<string | null>(null)
+  const gesture = useRef<number>(undefined)
   const Input = multiline ? 'textarea' : 'input'
   return (
     <label className={wide ? 'field wide' : 'field'}>
@@ -21,7 +22,7 @@ function Field(props: { label: string; value: string; onCommit: (text: string) =
         {...(multiline ? { rows: 2, 'aria-label': label } : step ? { type: 'number', step } : {})}
         onFocus={() => {
           setDraft(value)
-          if (live) useAppStore.getState().beginTransient()
+          if (live) gesture.current = useAppStore.getState().beginTransient()
         }}
         onChange={(e) => {
           setDraft(e.target.value)
@@ -30,7 +31,7 @@ function Field(props: { label: string; value: string; onCommit: (text: string) =
         onBlur={() => {
           if (draft !== null && draft !== value) onCommit(draft)
           setDraft(null)
-          if (live) useAppStore.getState().commit()
+          if (live) useAppStore.getState().commit(gesture.current)
         }}
         onKeyDown={(e) => (multiline ? e.key === 'Escape' : e.key === 'Enter') && e.currentTarget.blur()}
       />
@@ -61,6 +62,9 @@ const SIDE_HINTS: Record<string, string> = {
   inside: 'Inside: the bit runs inside the line (arrow), so the hole keeps its size.',
   on: 'On path: the bit centre follows the line.',
 }
+
+// The gesture of the slider (depth or bend) being dragged; only one can be at a time.
+let slider = 0
 
 const ALIGN_ICONS = { left: 'M2 4h12M2 8h8M2 12h10', center: 'M2 4h12M4 8h8M3 12h10', right: 'M2 4h12M6 8h8M4 12h10' }
 
@@ -161,9 +165,9 @@ function CutSection({ selected }: { selected: Shape[] }) {
                 max={maxDepth}
                 step="any"
                 value={Math.min(depth, maxDepth)}
-                onPointerDown={() => st().beginTransient()}
-                onPointerUp={() => st().commit()}
-                onBlur={() => st().commit()}
+                onPointerDown={() => (slider = st().beginTransient())}
+                onPointerUp={() => st().commit(slider)}
+                onBlur={() => st().commit(slider)}
                 onChange={(e) => {
                   const v = Number(e.target.value)
                   setCut({ depth: !vcarve && v > t - 0.05 ? t : Math.round(v * 10) / 10 })
@@ -423,7 +427,10 @@ export default function Inspector() {
                 ))}
               </select>
             </label>
-            {lengthField('Size', (s) => (s.type === 'text' ? s.size : 0), (s, size) => (s.type === 'text' ? fitText({ ...s, size }) : s), true)}
+            {lengthField('Size', (s) => (s.type === 'text' ? s.size : 0), (s, size) =>
+              s.type === 'text' ? fitText({ ...s, size, ...(s.letterSpacing && { letterSpacing: (s.letterSpacing * size) / s.size }) }) : s,
+            true)}
+            <h3 className="subhead">Layout</h3>
             {lengthField('Letter spacing', (s) => (s.type === 'text' ? (s.letterSpacing ?? 0) : 0), (s, v) =>
               s.type === 'text' ? fitText({ ...s, letterSpacing: Math.max(-s.size / 2, v) }) : s,
             )}
@@ -470,9 +477,9 @@ export default function Inspector() {
                 max={360}
                 step={5}
                 value={bend || 0}
-                onPointerDown={() => st().beginTransient()}
-                onPointerUp={() => st().commit()}
-                onBlur={() => st().commit()}
+                onPointerDown={() => (slider = st().beginTransient())}
+                onPointerUp={() => st().commit(slider)}
+                onBlur={() => st().commit(slider)}
                 onChange={(e) => updateText({ arc: Number(e.target.value) })}
               />
               <Field

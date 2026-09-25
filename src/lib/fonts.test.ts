@@ -117,3 +117,16 @@ test('mirror flips x about the block centre and keeps each contour winding', () 
     expect(p.points.some(([px, py]) => Math.abs(px - (mid - x)) < 1e-9 && py === y)).toBe(true)
   })
 })
+
+test('lines split on CRLF too, and an upward bend keeps the innermost line off the centre', () => {
+  expect(glyphPolylines(font, 'H\r\nH', 20)).toEqual(glyphPolylines(font, 'H\nH', 20))
+  // Beyond the limit every bend lays out the same; below it they differ.
+  const bent = (arc: number) => glyphPolylines(font, 'HH\nHH\nHH', 10, { arc })
+  expect(bent(360)).toEqual(bent(300))
+  expect(bent(10)).not.toEqual(bent(15))
+})
+
+test('a near-zero bend lays out straight', () => {
+  const straight = glyphPolylines(font, 'Hello', 20)
+  for (const arc of [1e-320, 0.4, -0.4]) expect(glyphPolylines(font, 'Hello', 20, { arc })).toEqual(straight)
+})
