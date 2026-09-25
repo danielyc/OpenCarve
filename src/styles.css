@@ -186,6 +186,23 @@ button:disabled {
   flex: 1;
 }
 
+.canvas-toolbar button[aria-pressed='true'],
+.canvas-toolbar button[aria-pressed='true']:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.snap-size {
+  height: 28px;
+  margin-right: 8px;
+  padding: 0 4px;
+  font: inherit;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
 .zoom {
   min-width: 48px;
   text-align: right;

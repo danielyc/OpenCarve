@@ -3,14 +3,14 @@ import { opKey, type Op, type Pt3 } from '../cam/toolpath'
 import { icons } from '../icons'
 import { FONTS, loadFont } from '../lib/fonts'
 import { dominantScale, fitText, localBounds, polylineBounds, scaleShape, shapeBounds, shapeToPolylines, toLocal, toWorld, type Bounds } from '../lib/geometry'
-import { formatLength } from '../lib/units'
+import { formatLength, nearestSnap, SNAP_SIZES, snapDelta, snapPoint } from '../lib/units'
 import { DEFAULT_TEXT_LAYOUT, newId, tabsActive, type Point, type Polyline, type Shape } from '../model'
 import { TOOL_KEYS, useAppStore, type Align, type Tool } from '../store'
 
 type Frame = { x: number; y: number; rotation: number; b: Bounds }
 type Drag =
   | { kind: 'pan'; cx: number; cy: number; panX: number; panY: number }
-  | { kind: 'transform'; ids: string[]; apply: (p: Point, shift: boolean) => Shape[] }
+  | { kind: 'transform'; ids: string[]; apply: (p: Point, shift: boolean, grid: number) => Shape[] } // grid: snap size in mm, 0 = off
   | { kind: 'marquee' | 'create'; start: Point; current: Point; shift: boolean; keep: string[] }
 
 const PX_PER_MM_AT_100 = 96 / 25.4
@@ -95,8 +95,8 @@ function scaleFn(base: Shape[], frame: Frame, [hx, hy]: Point) {
   const w0 = b.maxX - b.minX
   const h0 = b.maxY - b.minY
   const anchor = handleLocal(frame, [-hx, -hy])
-  return (p: Point, shift: boolean) => {
-    const [px, py] = toLocal(frame, p)
+  return (p: Point, shift: boolean, grid: number) => {
+    const [px, py] = toLocal(frame, snapPoint(p, grid))
     let { minX, maxX, minY, maxY } = b
     if (hx > 0) maxX = Math.max(px, minX + MIN_SIZE)
     if (hx < 0) minX = Math.min(px, maxX - MIN_SIZE)
@@ -120,9 +120,9 @@ function scaleFn(base: Shape[], frame: Frame, [hx, hy]: Point) {
 function rotateFn(base: Shape[], frame: Frame, start: Point) {
   const [ox, oy] = toWorld(frame, handleLocal(frame, [0, 0]))
   const a0 = Math.atan2(start[1] - oy, start[0] - ox)
-  return (p: Point, shift: boolean) => {
+  return (p: Point, shift: boolean, grid: number) => {
     let deg = ((Math.atan2(p[1] - oy, p[0] - ox) - a0) * 180) / Math.PI
-    if (shift) deg = Math.round(deg / 15) * 15
+    if (shift || grid) deg = Math.round(deg / 15) * 15
     return base.map((s) => {
       const [x, y] = toWorld({ x: ox, y: oy, rotation: deg }, [s.x - ox, s.y - oy])
       return { ...s, x, y, rotation: (((s.rotation + deg) % 360) + 360) % 360 }
@@ -151,6 +151,7 @@ export default function Canvas() {
   const selection = useAppStore((s) => s.selection)
   const tool = useAppStore((s) => s.tool)
   const view = useAppStore((s) => s.view)
+  const snap = useAppStore((s) => s.snap)
   useAppStore((s) => s.fontsVersion)
   const status = useAppStore((s) => s.status)
   const step = useAppStore((s) => s.step)
@@ -173,6 +174,8 @@ export default function Canvas() {
 
   const { zoom, panX, panY } = view
   const { stock, units } = project
+  const snapSize = nearestSnap(snap.size, units)
+  const gridFor = (e: { altKey: boolean }) => (snap.on && !e.altKey ? snapSize : 0) // Alt bypasses snapping
   const selected = project.shapes.filter((s) => selection.includes(s.id))
   const selecting = tool === 'select' || step !== 'design'
   const frame = selecting && drag?.kind !== 'marquee' ? selectionFrame(selected) : null
@@ -245,6 +248,7 @@ export default function Canvas() {
     else if ((key === 'delete' || key === 'backspace') && editing) st.deleteSelected()
     else if (key in arrows && !mod && editing) st.nudge(...arrows[key])
     else if (key === 'enter' && pen.length) finishPen(pen)
+    else if (!mod && !e.altKey && key === 'g' && editing) st.setSnap({ on: !st.snap.on })
     else if (!mod && !e.altKey && keyTool[key] && editing) st.setTool(keyTool[key])
     else if (key === 'escape') {
       if (pen.length) setPen([])
@@ -269,7 +273,8 @@ export default function Canvas() {
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     ;(document.activeElement as HTMLElement | null)?.blur?.()
     const st = useAppStore.getState()
-    const p = eventPoint(e)
+    const raw = eventPoint(e)
+    const p = snapPoint(raw, gridFor(e))
     if (e.button === 1 || (e.button === 0 && space)) {
       e.preventDefault()
       e.currentTarget.setPointerCapture(e.pointerId)
@@ -288,7 +293,7 @@ export default function Canvas() {
       return
     }
     if (design && tool === 'pen') {
-      if (pen.length >= 3 && dist(p, pen[0]) < CLOSE_PX / zoom) finishPen(pen, true)
+      if (pen.length >= 3 && dist(raw, pen[0]) < CLOSE_PX / zoom) finishPen(pen, true)
       else setPen([...pen, p])
       return
     }
@@ -301,14 +306,14 @@ export default function Canvas() {
     const handle = target.closest('[data-handle]')?.getAttribute('data-handle')
     if (design && handle && frame) {
       st.beginTransient()
-      const apply = handle === 'rotate' ? rotateFn(selected, frame, p) : scaleFn(selected, frame, handle.split(',').map(Number) as Point)
+      const apply = handle === 'rotate' ? rotateFn(selected, frame, raw) : scaleFn(selected, frame, handle.split(',').map(Number) as Point)
       setDrag({ kind: 'transform', ids: selection, apply })
       return
     }
     const id = target.closest('[data-id]')?.getAttribute('data-id')
     if (!id) {
       if (!e.shiftKey) st.setSelection([])
-      setDrag({ kind: 'marquee', start: p, current: p, shift: false, keep: e.shiftKey ? selection : [] })
+      setDrag({ kind: 'marquee', start: raw, current: raw, shift: false, keep: e.shiftKey ? selection : [] })
       return
     }
     let ids = selection
@@ -317,8 +322,16 @@ export default function Canvas() {
     st.setSelection(ids)
     if (!design || !ids.includes(id)) return
     const base = project.shapes.filter((s) => ids.includes(s.id))
+    const bounds = base.map(shapeBounds)
+    const corner: Point = [Math.min(...bounds.map((b) => b.minX)), Math.min(...bounds.map((b) => b.minY))]
     st.beginTransient()
-    setDrag({ kind: 'transform', ids, apply: (q) => base.map((s) => ({ ...s, x: s.x + q[0] - p[0], y: s.y + q[1] - p[1] })) })
+    const apply = (q: Point, _shift: boolean, grid: number) => {
+      let d: Point = [q[0] - raw[0], q[1] - raw[1]]
+      // With snapping on, a click that jitters a pixel or two must not jump the selection onto the grid.
+      if (grid) d = dist(q, raw) * zoom < 3 ? [0, 0] : snapDelta(corner, d, grid)
+      return base.map((s) => ({ ...s, x: s.x + d[0], y: s.y + d[1] }))
+    }
+    setDrag({ kind: 'transform', ids, apply })
   }
 
   const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
@@ -331,10 +344,10 @@ export default function Canvas() {
     if (drag.kind === 'pan') {
       useAppStore.getState().setView({ panX: drag.panX + e.clientX - drag.cx, panY: drag.panY + e.clientY - drag.cy })
     } else if (drag.kind === 'transform') {
-      const next = new Map(drag.apply(p, e.shiftKey).map((s) => [s.id, s]))
+      const next = new Map(drag.apply(p, e.shiftKey, gridFor(e)).map((s) => [s.id, s]))
       useAppStore.getState().updateShapes(drag.ids, (s) => next.get(s.id) ?? s)
     } else {
-      setDrag({ ...drag, current: p, shift: e.shiftKey })
+      setDrag({ ...drag, current: drag.kind === 'create' ? snapPoint(p, gridFor(e)) : p, shift: e.shiftKey })
     }
   }
 
@@ -349,7 +362,7 @@ export default function Canvas() {
       st.setSelection([...new Set([...drag.keep, ...hits])])
     }
     if (drag.kind === 'create' && tool !== 'select' && tool !== 'pen' && tool !== 'text') {
-      const shape = makeShape(tool, drag.start, p, e.shiftKey, 3 / zoom, newId())
+      const shape = makeShape(tool, drag.start, snapPoint(p, gridFor(e)), e.shiftKey, 3 / zoom, newId())
       if (shape) {
         st.addShape(shape)
         st.setTool('select')
@@ -358,10 +371,15 @@ export default function Canvas() {
     setDrag(null)
   }
 
+  // The minor grid is the snap grid while snapping (10 mm otherwise); lines under the 50 mm major grid are harmless.
+  const minorStep = snap.on ? snapSize : 10
+  const showMinor = zoom * minorStep >= 6
   const minor: string[] = []
   const major: string[] = []
-  for (let x = 10; x < stock.w; x += 10) (x % 50 ? minor : major).push(`M${x} 0V${stock.h}`)
-  for (let y = 10; y < stock.h; y += 10) (y % 50 ? minor : major).push(`M0 ${y}H${stock.w}`)
+  for (let i = 1; showMinor && i * minorStep < stock.w; i++) minor.push(`M${i * minorStep} 0V${stock.h}`)
+  for (let i = 1; showMinor && i * minorStep < stock.h; i++) minor.push(`M0 ${i * minorStep}H${stock.w}`)
+  for (let x = 50; x < stock.w; x += 50) major.push(`M${x} 0V${stock.h}`)
+  for (let y = 50; y < stock.h; y += 50) major.push(`M0 ${y}H${stock.w}`)
 
   const preview =
     drag?.kind === 'create' && tool !== 'select' && tool !== 'pen' && tool !== 'text' ? makeShape(tool, drag.start, drag.current, drag.shift, 3 / zoom) : null
@@ -409,6 +427,20 @@ export default function Canvas() {
             Show rapids
           </label>
         )}
+        {step === 'design' && (
+          <>
+            <button aria-pressed={snap.on} title="Snap to grid (G, hold Alt to bypass)" onClick={() => useAppStore.getState().setSnap({ on: !snap.on })}>
+              Snap
+            </button>
+            <select className="snap-size" aria-label="Snap size" value={snapSize} onChange={(e) => useAppStore.getState().setSnap({ size: Number(e.target.value) })}>
+              {SNAP_SIZES[units].map((o) => (
+                <option key={o.mm} value={o.mm}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
         <button onClick={() => fitTo(svgRef.current)}>Fit view</button>
         <output className="zoom" aria-label="Zoom">{Math.round((zoom / PX_PER_MM_AT_100) * 100)}%</output>
       </div>
@@ -426,7 +458,7 @@ export default function Canvas() {
       >
         <g transform={`translate(${panX} ${panY}) scale(${zoom} ${-zoom})`}>
           <rect className="material" width={stock.w} height={stock.h} />
-          {zoom * 10 >= 6 && <path className="grid-minor" d={minor.join('')} />}
+          {showMinor && <path className="grid-minor" d={minor.join('')} />}
           <path className="grid-major" d={major.join('')} />
           <rect className="material-edge" width={stock.w} height={stock.h} />
           {project.shapes.map((s) => {

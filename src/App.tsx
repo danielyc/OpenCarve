@@ -34,6 +34,7 @@ const SHORTCUTS: [string, string][] = [
   [`${mod}+Z`, 'Undo'],
   [`${mod}+⇧Z / ${mod}+Y`, 'Redo'],
   [`${mod}+D`, 'Duplicate'],
+  ['G', 'Snap to grid on/off (hold Alt to bypass)'],
   ['Arrows', 'Nudge 1 mm (⇧ 10 mm)'],
   ['Enter / double-click', 'Finish pen path'],
   ['Esc', 'Deselect / cancel'],

@@ -1,4 +1,4 @@
-import { beforeEach, expect, test } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
 import { shapeBounds } from './lib/geometry'
 import { findBit, vbitMaxDepth } from './lib/library'
 import { parseProject, serializeProject } from './lib/projectFile'
@@ -289,4 +289,20 @@ test('values below the UI minimums are clamped to them, and the result saves a f
   expect(p.machine).toMatchObject({ w: LIMITS.travel, h: LIMITS.travel, maxRpm: LIMITS.maxRpm })
   expect(p.cutSettings.rough.safeZ).toBe(LIMITS.safeZ)
   expect(parseProject(serializeProject(p))).toEqual(p)
+})
+
+test('snap settings persist in localStorage and restore on load', async () => {
+  const data = new Map<string, string>()
+  vi.stubGlobal('localStorage', { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => data.set(k, v) })
+  try {
+    store().setSnap({ on: true, size: 5 })
+    expect(JSON.parse(data.get('opencarve:snap')!)).toEqual({ on: true, size: 5 })
+    vi.resetModules()
+    expect((await import('./store')).useAppStore.getState().snap).toEqual({ on: true, size: 5 })
+    data.set('opencarve:snap', '{"on":true,"size":-1}')
+    vi.resetModules()
+    expect((await import('./store')).useAppStore.getState().snap).toEqual({ on: false, size: 1 })
+  } finally {
+    vi.unstubAllGlobals()
+  }
 })

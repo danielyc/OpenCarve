@@ -99,6 +99,35 @@ test('draws a rectangle and undoes it', async ({ page }) => {
   await expect(shapes).toHaveCount(0)
 })
 
+test('snaps a drawn rectangle to the grid, unless Alt is held', async ({ page }) => {
+  const snap = page.getByRole('button', { name: 'Snap', exact: true })
+  await snap.click()
+  await expect(snap).toHaveAttribute('aria-pressed', 'true')
+  await page.getByLabel('Snap size').selectOption({ label: '10 mm' })
+  const box = (await page.getByLabel('Design canvas').boundingBox())!
+  const cx = box.x + box.width / 2
+  const cy = box.y + box.height / 2
+  const draw = async () => {
+    await page.getByRole('button', { name: 'Rectangle' }).click()
+    await page.mouse.move(cx - 63, cy - 37)
+    await page.mouse.down()
+    await page.mouse.move(cx + 58, cy + 41, { steps: 4 })
+    await page.mouse.up()
+    const v = async (label: string) => parseFloat(await page.getByLabel(label, { exact: true }).inputValue())
+    const [x, y, w, h] = [await v('X'), await v('Y'), await v('W'), await v('H')]
+    return [x - w / 2, y - h / 2, w, h] // X/Y are the centre; the corner and size land on the grid
+  }
+  const onGrid = (v: number) => Math.abs(v / 10 - Math.round(v / 10)) < 1e-6
+  const snapped = await draw()
+  expect(snapped.every(onGrid), String(snapped)).toBe(true)
+  await page.keyboard.down('Alt')
+  const free = await draw()
+  await page.keyboard.up('Alt')
+  expect(free.every(onGrid), String(free)).toBe(false)
+  await page.keyboard.press('g')
+  await expect(snap).toHaveAttribute('aria-pressed', 'false')
+})
+
 test('draws a path with the pen tool', async ({ page }) => {
   await page.getByRole('button', { name: 'Pen' }).click()
   const box = (await page.getByLabel('Design canvas').boundingBox())!

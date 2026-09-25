@@ -6,7 +6,7 @@ Free, open-source (AGPL-3.0) design and toolpath software for hobby CNC routers,
 
 ## Features
 
-- **Design**: rectangle, ellipse, polygon, pen (lines and closed paths) and text tools; move, scale, rotate, align, duplicate, nudge, undo/redo.
+- **Design**: rectangle, ellipse, polygon, pen (lines and closed paths) and text tools; move, scale, rotate, align, duplicate, nudge, undo/redo; snap to grid (G) with selectable sizes in mm or inches (hold Alt to bypass).
 - **Text** with 16 bundled fonts, your own uploaded TTF/OTF fonts, and Google Fonts on demand via Fontsource (see [Fonts](#fonts)); multi-line text with left/centre/right alignment and line height, letter spacing, bend (arc text) and mirror.
 - **SVG import**: paths, basic shapes, transforms and groups (use Import or drop a file onto the editor).
 - **Materials, bits and cut settings**: pick a material and bits; feed, plunge, stepdown and RPM are filled in with recommended values you can override.

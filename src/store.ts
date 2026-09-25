@@ -18,6 +18,10 @@ export interface Anim {
   speed: number // 1..50
   removal: boolean // progressive material removal
 }
+export interface Snap {
+  on: boolean
+  size: number // mm
+}
 export interface View {
   zoom: number
   panX: number
@@ -25,6 +29,17 @@ export interface View {
 }
 
 const MAX_HISTORY = 100
+const SNAP_KEY = 'opencarve:snap'
+
+function storedSnap(): Snap {
+  try {
+    const s = JSON.parse(localStorage.getItem(SNAP_KEY) ?? '')
+    if (typeof s.on === 'boolean' && Number.isFinite(s.size) && s.size > 0) return { on: s.on, size: s.size }
+  } catch {
+    // no storage or nothing valid stored
+  }
+  return { on: false, size: 1 }
+}
 const FIT_MARGIN = 40
 
 interface AppState {
@@ -35,6 +50,7 @@ interface AppState {
   selection: string[]
   tool: Tool
   view: View
+  snap: Snap // an editor preference: not undoable, not in the project file
   past: Project[]
   future: Project[]
   transientBase: Project | null
@@ -75,6 +91,7 @@ interface AppState {
   setCut: (ids: string[], patch: Partial<Cut> | null) => void
   setUnits: (units: Units) => void
   setView: (patch: Partial<View>) => void
+  setSnap: (patch: Partial<Snap>) => void
   fitView: (width: number, height: number) => void
   beginTransient: () => number
   commit: (gesture?: number) => void
@@ -124,6 +141,7 @@ export const useAppStore = create<AppState>()((set, get) => {
     selection: [],
     tool: 'select',
     view: { zoom: 2, panX: 0, panY: 0 },
+    snap: storedSnap(),
     past: [],
     future: [],
     transientBase: null,
@@ -306,6 +324,15 @@ export const useAppStore = create<AppState>()((set, get) => {
       }),
     setUnits: (units) => set((s) => ({ project: { ...s.project, units } })),
     setView: (patch) => set((s) => ({ view: { ...s.view, ...patch } })),
+    setSnap: (patch) => {
+      const snap = { ...get().snap, ...patch }
+      set({ snap })
+      try {
+        localStorage.setItem(SNAP_KEY, JSON.stringify(snap))
+      } catch {
+        // storage full or blocked: the setting lasts for this session
+      }
+    },
 
     fitView: (width, height) => {
       const { w, h } = get().project.stock
