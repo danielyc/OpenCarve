@@ -91,7 +91,9 @@ function CutSection({ selected }: { selected: Shape[] }) {
   const open = selected.some(isOpen)
   const vbit = [bits.rough, bits.detail].some((id) => id && findBit(id).type === 'vbit')
   const type = shared((s) => s.cut?.type ?? 'none')
-  const through = cuts.every((c) => c && c.depth >= t)
+  const vcarve = type === 'vcarve'
+  const maxDepth = vcarve ? t - 0.5 : t
+  const through = !vcarve && cuts.every((c) => c && c.depth >= t)
   const depth = cuts[0]?.depth ?? t
   const sameDepth = cuts.every((c) => c?.depth === depth)
   const tabbable = cuts.every((c) => c?.type === 'outline' && c.depth >= t)
@@ -138,25 +140,25 @@ function CutSection({ selected }: { selected: Shape[] }) {
             <div className="depth">
               <input
                 type="range"
-                aria-label="Depth"
+                aria-label={vcarve ? 'Max depth' : 'Depth'}
                 aria-valuetext={through ? 'Through' : `${formatLength(depth, units)} ${units}`}
                 min={0.1}
-                max={t}
+                max={maxDepth}
                 step="any"
-                value={Math.min(depth, t)}
+                value={Math.min(depth, maxDepth)}
                 onPointerDown={() => st().beginTransient()}
                 onPointerUp={() => st().commit()}
                 onBlur={() => st().commit()}
                 onChange={(e) => {
                   const v = Number(e.target.value)
-                  setCut({ depth: v > t - 0.05 ? t : Math.round(v * 10) / 10 })
+                  setCut({ depth: !vcarve && v > t - 0.05 ? t : Math.round(v * 10) / 10 })
                 }}
               />
               {through && <span className="badge">Through</span>}
             </div>
           )}
           <div className="fields">
-            {numberField('Depth value', (c) => c.depth, (depth) => ({ depth }))}
+            {numberField(vcarve ? 'Max depth value' : 'Depth value', (c) => c.depth, (depth) => ({ depth }))}
           </div>
           {tabbable && (
             <label className="check">

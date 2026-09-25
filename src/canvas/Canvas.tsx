@@ -33,11 +33,11 @@ const pathD = (polys: Polyline[]) =>
   polys.map((p) => 'M' + p.points.map((q) => q.join(' ')).join('L') + (p.closed ? 'Z' : '')).join('')
 
 function toolpathD(ops: Op[]) {
-  const d = { rough: '', detail: '', rapid: '' }
+  const d = { rough: '', detail: '', vcarve: '', rapid: '' }
   let last: Pt3 | null = null
   for (const op of ops) {
     for (const seg of op.segments) {
-      const key = seg.rapid ? 'rapid' : op.role
+      const key = seg.rapid ? 'rapid' : op.kind === 'vcarve' ? 'vcarve' : op.role
       const [first, ...rest] = last ? [last, ...seg.points] : seg.points
       d[key] += `M${first[0]} ${first[1]}` + rest.map((p) => `L${p[0]} ${p[1]}`).join('')
       last = seg.points.at(-1)!
@@ -414,6 +414,7 @@ export default function Canvas() {
               <path className="toolpath-rapid" d={toolpaths.rapid} />
               <path className="toolpath-rough" d={toolpaths.rough} />
               <path className="toolpath-detail" d={toolpaths.detail} />
+              <path className="toolpath-vcarve" d={toolpaths.vcarve} />
             </g>
           )}
           {preview && <path className="preview" d={pathD(shapeToPolylines(preview))} />}

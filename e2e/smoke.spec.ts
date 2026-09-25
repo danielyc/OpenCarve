@@ -101,3 +101,20 @@ test('exports G-code for a rectangle', async ({ page }) => {
   const gcode = await (await download.createReadStream()).toArray()
   expect(Buffer.concat(gcode).toString()).toContain('G21 G90 G17')
 })
+
+test('exports a V-carve with a V-bit as the detail bit', async ({ page }) => {
+  await page.goto('/')
+  await page.getByLabel('Detail bit').selectOption('90-vbit')
+  await page.getByRole('button', { name: 'Rectangle' }).click()
+  const box = (await page.getByLabel('Design canvas').boundingBox())!
+  await page.mouse.move(box.x + box.width / 2 - 50, box.y + box.height / 2 - 30)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 + 50, box.y + box.height / 2 + 30, { steps: 4 })
+  await page.mouse.up()
+
+  await page.getByRole('radio', { name: 'V-carve' }).click()
+  await expect(page.locator('[data-id]')).toHaveAttribute('data-cut', 'vcarve')
+  await expect(page.getByRole('slider', { name: 'Max depth' })).toBeVisible()
+  await page.getByRole('button', { name: 'Export', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Download detail G-code' })).toBeEnabled()
+})

@@ -147,7 +147,7 @@ export function validCut(s: Shape, cut: Cut, thickness: number): Cut {
     ...cut,
     type: open ? 'outline' : cut.type,
     side: open ? 'on' : cut.side,
-    depth: clamp(cut.depth, 0.1, thickness),
+    depth: clamp(cut.depth, 0.1, cut.type === 'vcarve' && !open ? thickness - 0.5 : thickness), // a V-carve's max depth, never through
     tabCount: Math.max(1, Math.round(cut.tabCount)),
     tabWidth: Math.max(0.1, cut.tabWidth),
     tabHeight: clamp(cut.tabHeight, 0.1, thickness - 0.1),

@@ -542,6 +542,10 @@ button:disabled {
   stroke: #9333ea;
 }
 
+.toolpath-vcarve {
+  stroke: #ea580c;
+}
+
 .toolpath-rapid {
   stroke: #9ca3af;
   stroke-dasharray: 2 3;

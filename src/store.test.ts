@@ -113,6 +113,8 @@ test('depth and tab sizes are clamped; tabs are kept but only active on a throug
   expect(tabsActive(cut(), 12)).toBe(false)
   store().setCut(['a'], { type: 'outline' })
   expect(tabsActive(cut(), 12)).toBe(true)
+  store().setCut(['a'], { type: 'vcarve' })
+  expect(cut().depth).toBe(11.5) // a V-carve never cuts through
   store().setCut(['a'], null)
   expect(store().project.shapes[0].cut).toBeUndefined()
 })

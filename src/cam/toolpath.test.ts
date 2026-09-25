@@ -7,7 +7,7 @@ import { shapeToPolylines, tabPositions } from '../lib/geometry'
 import { findBit, findMaterial, recommendedSettings } from '../lib/library'
 import { defaultCut, newProject, type CompoundShape, type Point, type Project, type RectShape, type Shape } from '../model'
 import { toGcode } from './gcode'
-import { orient, outlinePaths, placeTabs, planProject, pocketRings, shapeRegion, withTabs, zLevels, type Pt3 } from './toolpath'
+import { orient, outlinePaths, placeTabs, planProject, pocketRings, shapeRegion, withTabs, zLevels, type Op, type Pt3 } from './toolpath'
 
 const area = (p: PathD) => p.reduce((a, q, i) => { const n = p[(i + 1) % p.length]; return a + q.x * n.y - n.x * q.y }, 0) / 2
 const bounds = (paths: PathsD) => {
@@ -110,12 +110,10 @@ describe('passes and tabs', () => {
   })
 })
 
-// Samples every XY feed move at depth: all of it must stay at least r inside the pocket.
-function assertInsideWall(shape: Shape, bit: string) {
-  const p = project([{ ...shape, cut: { ...defaultCut(12), type: 'pocket', depth: 3 } }], bit)
-  const r = findBit(bit).diameter / 2
-  const edges = shapeRegion(shape).flatMap((path) => path.map((a, i) => [a, path[(i + 1) % path.length]]))
+// Distance to the shape's boundary and a non-zero inside test.
+function regionProbe(shape: Shape) {
   const region = shapeRegion(shape)
+  const edges = region.flatMap((path) => path.map((a, i) => [a, path[(i + 1) % path.length]]))
   const dist = (x: number, y: number) =>
     Math.min(...edges.map(([a, b]) => {
       const dx = b.x - a.x, dy = b.y - a.y
@@ -123,6 +121,14 @@ function assertInsideWall(shape: Shape, bit: string) {
       return Math.hypot(x - a.x - t * dx, y - a.y - t * dy)
     }))
   const insideRegion = (x: number, y: number) => region.reduce((w, path) => w + (pointInPolygonD({ x, y }, path) === PointInPolygonResult.IsInside ? Math.sign(area(path)) : 0), 0) > 0
+  return { dist, insideRegion }
+}
+
+// Samples every XY feed move at depth: all of it must stay at least r inside the pocket.
+function assertInsideWall(shape: Shape, bit: string) {
+  const p = project([{ ...shape, cut: { ...defaultCut(12), type: 'pocket', depth: 3 } }], bit)
+  const r = findBit(bit).diameter / 2
+  const { dist, insideRegion } = regionProbe(shape)
   let prev: Pt3 | null = null
   let checked = 0
   for (const seg of planProject(p).ops[0].segments) {
@@ -222,7 +228,7 @@ describe('plan and gcode', () => {
   it('warns about nothing to carve, v-carve and out-of-stock shapes', () => {
     expect(planProject(project([])).warnings).toEqual(['Nothing to carve'])
     const w = planProject(project([{ ...rect(10, 10), x: -2, cut: { ...defaultCut(12), type: 'vcarve' } }, { ...rect(10, 10), id: 'z', x: -2, cut: defaultCut(12) }])).warnings
-    expect(w).toEqual(['V-carve is not generated yet', 'Rect is partly outside the stock'])
+    expect(w).toEqual(['V-carve needs a V-bit', 'Rect is partly outside the stock'])
   })
   it('keeps comments ASCII', () => {
     const p = { ...sample(), name: 'Café\n(test)' }
@@ -254,6 +260,97 @@ describe('plan and gcode', () => {
       else expect(want).toContain(feed)
       feed = f ? Number(f[1]) : feed
     }
+  })
+})
+
+describe('ordering and tab limits', () => {
+  const pocket = { ...rect(50, 50), id: 'p', x: 200, y: 100, cut: { ...defaultCut(12), type: 'pocket' as const, depth: 3 } }
+  const outline = (extra: Partial<Shape['cut'] & object> = {}) => ({ ...rect(20, 20), id: 'o', cut: { ...defaultCut(12), ...extra } })
+  it('warns when a tabless part is freed before the detail pass', () => {
+    const warn = 'Parts are cut free before the detail pass; keep tabs on'
+    expect(planProject(project([outline({ tabs: false }), pocket], '6mm-endmill', '1mm-endmill')).warnings).toContain(warn)
+    expect(planProject(project([outline({ tabs: false, side: 'on' }), pocket], '6mm-endmill', '1mm-endmill')).warnings).toContain(warn)
+    expect(planProject(project([outline(), pocket], '6mm-endmill', '1mm-endmill')).warnings).not.toContain(warn)
+    expect(planProject(project([outline({ tabs: false }), pocket], '6mm-endmill')).warnings).not.toContain(warn)
+  })
+  it('holds back through outlines on the line too, but not shallow ones', () => {
+    expect(planProject(project([outline({ side: 'on' }), pocket])).ops.map((o) => o.shapeId)).toEqual(['p', 'o'])
+    expect(planProject(project([outline({ depth: 2 }), pocket])).ops.map((o) => o.shapeId)).toEqual(['o', 'p'])
+  })
+  it('no "bit too large" when the detail bit pockets the shape', () => {
+    const small = { ...rect(5, 5), cut: { ...defaultCut(12), type: 'pocket' as const, depth: 3 } }
+    expect(planProject(project([small], '6mm-endmill')).warnings).toContain('Bit too large for Rect')
+    const r = planProject(project([small], '6mm-endmill', '1mm-endmill'))
+    expect(r.warnings).not.toContain('Bit too large for Rect')
+    expect(r.ops.map((o) => o.kind)).toEqual(['pocket-detail'])
+  })
+  const tabSections = (op: Op, tabZ: number) => {
+    const final = op.segments.filter((s) => !s.rapid).flatMap((s) => s.points)
+    return final.filter((q, i) => q[2] === tabZ && final[i - 1]?.[2] !== tabZ)
+  }
+  it('outside cuts put no tabs on holes', () => {
+    const ring: CompoundShape = { id: 'c', type: 'compound', name: 'C', x: 100, y: 100, rotation: 0, paths: [{ closed: true, points: [[-20, -20], [20, -20], [20, 20], [-20, 20]] }, { closed: true, points: [[-10, 10], [10, 10], [10, -10], [-10, -10]] }], cut: { ...defaultCut(12), tabCount: 8 } }
+    const starts = tabSections(planProject(project([ring])).ops[0], -9)
+    expect(starts.length).toBeGreaterThan(0)
+    for (const [x, y] of starts) expect(Math.max(Math.abs(x - 100), Math.abs(y - 100))).toBeGreaterThan(15)
+  })
+  it('caps tabs at half of each loop', () => {
+    // Loop about 40 + π·3.175 ≈ 50 mm: at most 4 tabs of 6 mm.
+    const op = planProject(project([{ ...rect(10, 10), cut: { ...defaultCut(12), tabCount: 10 } }])).ops[0]
+    const final = op.segments.filter((s) => s.points.length > 2).at(-1)!.points
+    expect(final.filter((q, i) => q[2] === -9 && final[i - 1]?.[2] !== -9)).toHaveLength(4)
+  })
+})
+
+describe('v-carve', () => {
+  const vcarve = (w: number, h: number, depth: number) => ({ ...rect(w, h), x: 100, y: 100, cut: { ...defaultCut(12), type: 'vcarve' as const, depth } })
+  const cutPoints = (op: Op) => op.segments.filter((s) => !s.rapid).flatMap((s) => s.points)
+  it('60×20 rect, 90° V-bit, max depth 4, endmill clears the floor', () => {
+    const shape = vcarve(60, 20, 4)
+    const r = planProject(project([shape], '1/8-endmill', '90-vbit'))
+    expect(r.ops.map((o) => [o.role, o.kind])).toEqual([
+      ['rough', 'vcarve-clear'],
+      ['detail', 'vcarve'],
+    ])
+    expect(r.warnings).toEqual([])
+    const clear = cutPoints(r.ops[0])
+    const b = bounds([clear.map(([x, y]) => ({ x, y }))])
+    expect(b.w).toBeCloseTo(52 - 3.175, 1)
+    expect(b.h).toBeCloseTo(12 - 3.175, 1)
+    expect(Math.min(...clear.map((q) => q[2]))).toBeCloseTo(-4)
+    const { dist, insideRegion } = regionProbe(shape)
+    const pts = cutPoints(r.ops[1])
+    for (const [x, y, z] of pts) {
+      expect(z).toBeGreaterThanOrEqual(-4 - 1e-9)
+      expect(Math.abs(z + Math.min(dist(x, y), 4))).toBeLessThan(0.06)
+      expect(insideRegion(x, y) || dist(x, y) < 1e-6).toBe(true)
+    }
+    // The floor contour: a closed 52×12 loop at -4.
+    const floor = r.ops[1].segments.find((s) => s.points.length > 3 && s.points.every((q) => q[2] === -4))!
+    expect(bounds([floor.points.map(([x, y]) => ({ x, y }))])).toEqual({ w: expect.closeTo(52, 2), h: expect.closeTo(12, 2) })
+  })
+  it('never cuts through: max depth is clamped to thickness - 0.5', () => {
+    const r = planProject(project([vcarve(60, 40, 12)], '1/8-endmill', '90-vbit'))
+    const zs = r.ops.flatMap(cutPoints).map((q) => q[2])
+    expect(Math.min(...zs)).toBeCloseTo(-11.5)
+  })
+  it('without an endmill the V-bit clears the floor, and warns', () => {
+    const r = planProject(project([vcarve(60, 20, 4)], '60-vbit'))
+    expect(r.ops.map((o) => [o.role, o.kind])).toEqual([
+      ['rough', 'vcarve-clear'],
+      ['rough', 'vcarve'],
+    ])
+    expect(r.warnings).toEqual(['Add a flat endmill for a smoother V-carve floor'])
+  })
+  it('without a V-bit: warning and no ops', () => {
+    const r = planProject(project([vcarve(60, 20, 4)], '1/8-endmill', '1mm-endmill'))
+    expect(r.warnings).toEqual(['V-carve needs a V-bit'])
+    expect(r.ops).toEqual([])
+  })
+  it('emits simultaneous XYZ moves', () => {
+    const p = project([vcarve(60, 20, 4)], '1/8-endmill', '90-vbit')
+    const g = toGcode(planProject(p), 'detail', p)
+    expect(g).toMatch(/^G1 X-?[\d.]+ Y-?[\d.]+ Z-?[\d.]+/m)
   })
 })
 

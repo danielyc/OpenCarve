@@ -18,6 +18,7 @@ import { polylineBounds, shapeToPolylines, tabPositions } from '../lib/geometry'
 import { findBit } from '../lib/library'
 import { MAX_STEPOVER, tabsActive, type BitRole, type Cut, type CutSettings, type Point, type Project, type Shape } from '../model'
 import { opsTime } from './gcode'
+import { medialAxis, SPACING, type MedialPoint } from './vcarve'
 
 export type Pt3 = [number, number, number]
 // rapid: G0 at safe Z. plunge: Z move at plunge feed. Otherwise G1 at cutting feed.
@@ -29,7 +30,7 @@ export interface Segment {
 export interface Op {
   role: BitRole
   shapeId: string
-  kind: 'outline' | 'pocket' | 'pocket-detail' | 'vcarve'
+  kind: 'outline' | 'pocket' | 'pocket-detail' | 'vcarve' | 'vcarve-clear'
   segments: Segment[]
 }
 export interface CamResult {
@@ -251,11 +252,86 @@ function pocketSegments(region: PathsD, r: number, s: CutSettings, depth: number
   return L.finish()
 }
 
+// Parts of a medial chain with lo < clearance <= hi (clearance is linear along each segment).
+function clipBand(pts: MedialPoint[], lo: number, hi: number): MedialPoint[][] {
+  const out: MedialPoint[][] = []
+  let cur: MedialPoint[] | null = null
+  const at = (a: MedialPoint, b: MedialPoint, t: number): MedialPoint => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
+  const inBand = (c: number) => c > lo && c <= hi
+  if (inBand(pts[0][2])) out.push((cur = [pts[0]]))
+  for (let i = 1; i < pts.length; i++) {
+    const [a, b] = [pts[i - 1], pts[i]]
+    const dc = b[2] - a[2]
+    // Parameter range of the segment inside the band.
+    let [t0, t1] = [0, 1]
+    if (dc) {
+      const [u, v] = [(lo - a[2]) / dc, (hi - a[2]) / dc]
+      t0 = Math.max(0, Math.min(u, v))
+      t1 = Math.min(1, Math.max(u, v))
+    } else if (!inBand(a[2])) t1 = -1
+    if (t1 <= t0) {
+      cur = null
+      continue
+    }
+    if (!cur || t0 > 0) out.push((cur = [at(a, b, t0)]))
+    cur.push(at(a, b, t1))
+    if (t1 < 1) cur = null
+  }
+  return out.filter((p) => p.length > 1)
+}
+
+// Nearest-neighbour order; open paths may be reversed, closed loops (first = last) restarted at any vertex.
+function nearestOrder(open: Pt3[][], loops: Pt3[][], from: Pt3 | null): Pt3[][] {
+  const pool = [...open.map((p) => ({ p, loop: false })), ...loops.map((p) => ({ p, loop: true }))]
+  const d2 = (a: Pt3, b: Pt3) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2
+  const out: Pt3[][] = []
+  let here = from ?? pool[0]?.p[0]
+  while (pool.length) {
+    let [best, bd, rev] = [0, Infinity, false]
+    pool.forEach(({ p, loop }, i) => {
+      if (d2(here, p[0]) < bd) [best, bd, rev] = [i, d2(here, p[0]), false]
+      if (!loop && d2(here, p.at(-1)!) < bd) [best, bd, rev] = [i, d2(here, p.at(-1)!), true]
+    })
+    const { loop } = pool[best]
+    let { p } = pool[best]
+    pool[best] = pool.at(-1)!
+    pool.pop()
+    if (rev) p = [...p].reverse()
+    if (loop) {
+      let j = 0
+      p.forEach((q, i) => d2(here, q) < d2(here, p[j]) && (j = i))
+      p = [...p.slice(j, -1), ...p.slice(0, j), p[j]]
+    }
+    out.push(p)
+    here = p.at(-1)!
+  }
+  return out
+}
+
+// V-bit with tan(half angle) k. Pass i cuts the medial axis where its depth c/k falls in (z_{i-1}, z_i], and the
+// contour of the region shrunk by |z_i|·k at z_i; the last contour outlines the flat floor at dmax.
+function vcarveSegments(region: PathsD, chains: MedialPoint[][], k: number, dmax: number, s: CutSettings) {
+  const L = linker(s.safeZ)
+  zLevels(dmax, s.stepdown).forEach((z, i, zs) => {
+    const hi = -z * k
+    const lo = i ? -zs[i - 1] * k : -1
+    const open = chains.flatMap((c) => clipBand(c, lo, hi)).map((c) => c.map(([x, y, cl]): Pt3 => [x, y, -cl / k]))
+    const loops = inflate(region, -hi).map((p) => closedPts(orient(p, areaD(p) < 0, s.direction)).map((q): Pt3 => [...q, z]))
+    for (const path of nearestOrder(open, loops, L.cur)) {
+      const c = L.cur
+      L.moveTo(path[0], !!c && Math.hypot(c[0] - path[0][0], c[1] - path[0][1]) < 0.05)
+      L.cut(path.slice(1))
+    }
+  })
+  return L.finish()
+}
+
 export function planProject(project: Project): CamResult {
   const { stock, bits, cutSettings } = project
   const t = stock.thickness
   const ops: Op[] = []
-  const last: Op[] = [] // outside outlines, cut after everything else so parts aren't freed before their pockets
+  const last: Op[] = [] // through outlines not cut inside, run after everything else so parts aren't freed early
+  let freed = false // a held-back outline without tabs
   const warnings: string[] = []
   const carved = project.shapes.filter((s) => s.cut)
   if (!carved.length) warnings.push('Nothing to carve')
@@ -264,14 +340,15 @@ export function planProject(project: Project): CamResult {
   const detailBit = bits.detail ? findBit(bits.detail) : null
   const ds = cutSettings.detail
   const usableDetail = detailBit && ds && detailBit.type !== 'vbit' && detailBit.diameter < 2 * r
+  const vRole: BitRole | null = detailBit?.type === 'vbit' ? 'detail' : findBit(bits.rough).type === 'vbit' ? 'rough' : null
 
   for (const shape of carved) {
     const cut = shape.cut!
-    if (cut.type === 'vcarve') {
-      warnings.push('V-carve is not generated yet')
+    if (cut.type === 'vcarve' && !vRole) {
+      warnings.push('V-carve needs a V-bit')
       continue
     }
-    if (cut.depth > t + 1e-9) warnings.push(`${shape.name} is deeper than the stock`)
+    if (cut.type !== 'vcarve' && cut.depth > t + 1e-9) warnings.push(`${shape.name} is deeper than the stock`)
     const depth = Math.min(cut.depth, t)
     const polys = shapeToPolylines(shape)
     if (!polys.length) {
@@ -285,6 +362,30 @@ export function planProject(project: Project): CamResult {
     const push = (list: Op[], role: BitRole, kind: Op['kind'], segments: Segment[]) =>
       segments.length && list.push({ role, shapeId: shape.id, kind, segments })
 
+    if (cut.type === 'vcarve') {
+      const vs = cutSettings[vRole!]!
+      const k = Math.tan((findBit(bits[vRole!]!).angle! * Math.PI) / 360)
+      const dmax = Math.min(cut.depth, t - 0.5) // never through
+      const floor = inflate(region, -dmax * k)
+      if (floor.length) {
+        // Flat floor: the other bit if it's a flat-ish cutter that fits, else the V-bit in rings spaced for 0.2 mm ridges.
+        // ponytail: an endmill leaves the floor's sharp corners (within its radius) to the V-bit's sloped cone; a
+        // V-bit rest pass there would finish them.
+        const oRole: BitRole = vRole === 'rough' ? 'detail' : 'rough'
+        const oBit = bits[oRole] ? findBit(bits[oRole]!) : null
+        const or = oBit && oBit.type !== 'vbit' && cutSettings[oRole] ? oBit.diameter / 2 : 0
+        if (or && inflate(floor, -or).length) push(ops, oRole, 'vcarve-clear', pocketSegments(floor, or, cutSettings[oRole]!, dmax))
+        else {
+          warnings.push('Add a flat endmill for a smoother V-carve floor')
+          push(ops, vRole!, 'vcarve-clear', pocketSegments(floor, 2 * 0.2 * k, { ...vs, stepover: MAX_STEPOVER }, dmax))
+        }
+      }
+      const { chains, spacing } = medialAxis(region)
+      if (spacing > SPACING) warnings.push(`${shape.name} is very large; its V-carve is less detailed`)
+      push(ops, vRole!, 'vcarve', vcarveSegments(region, chains, k, dmax, vs))
+      continue
+    }
+
     if (cut.type === 'outline') {
       const paths = outlinePaths(region, cut.side, r)
       const inside = cut.side === 'inside'
@@ -297,8 +398,14 @@ export function planProject(project: Project): CamResult {
       if (tabZ !== null && loops.length) {
         for (const { point } of polys.filter((p) => p.closed).flatMap((p) => tabPositions([p], cut.tabCount))) {
           const d = loops.map((l) => nearest(l, arcLengths(l), point).d)
-          tabsFor[d.indexOf(Math.min(...d))].push(point)
+          const k = d.indexOf(Math.min(...d))
+          if (cut.side !== 'outside' || areaD(paths[k]) > 0) tabsFor[k].push(point) // tabs on outside-cut holes only hold scrap
         }
+        // At most half of each loop is tab.
+        tabsFor.forEach((tabs, k) => {
+          const max = Math.floor(arcLengths(loops[k]).at(-1)! / 2 / cut.tabWidth)
+          if (tabs.length > max) tabsFor[k] = Array.from({ length: max }, (_, i) => tabs[Math.floor((i * tabs.length) / max)])
+        })
       }
       const L = linker(rs.safeZ)
       loops.forEach((loop, k) => {
@@ -316,25 +423,30 @@ export function planProject(project: Project): CamResult {
           L.cut(points.slice(1).map((p): Pt3 => [...p, z]))
         }
       }
-      push(cut.side === 'outside' ? last : ops, 'rough', 'outline', L.finish())
+      const holdBack = cut.side !== 'inside' && cut.depth >= t
+      if (holdBack && tabZ === null) freed = true
+      push(holdBack ? last : ops, 'rough', 'outline', L.finish())
       continue
     }
 
-    if (region.length && !inflate(region, -r).length) warnings.push(tooLarge)
     push(ops, 'rough', 'pocket', pocketSegments(region, r, rs, depth))
     // Rest machining: what the rough bit's radius couldn't reach, widened so the detail bit can get in, clipped to the pocket.
     const open = (p: PathsD, d: number) => inflate(inflate(p, -d), d)
     const rest = open(boolean(ClipType.Difference, region, open(region, r)), SLIVER)
+    let detailed = false
     if (usableDetail) {
       const dr = detailBit.diameter / 2
-      if (rest.length) push(ops, 'detail', 'pocket-detail', pocketSegments(boolean(ClipType.Intersection, region, inflate(rest, 2 * dr)), dr, ds, depth))
+      if (rest.length) detailed = !!push(ops, 'detail', 'pocket-detail', pocketSegments(boolean(ClipType.Intersection, region, inflate(rest, 2 * dr)), dr, ds, depth))
     } else {
       if (detailBit && detailBit.type !== 'vbit') warnings.push('The detail bit must be smaller than the rough bit')
-      // Round inside corners always leave a little rest (about 0.17 r deep); only warn about more than that.
+      // ponytail: round inside corners always leave a little rest (about 0.17 r deep), so only leftovers wider than
+      // about 0.5 r are flagged; narrower slivers go unmentioned. Measure the rest's depth if that proves too lax.
       if (inflate(rest, -0.25 * r).length) warnings.push(`The rough bit can't reach all of ${shape.name}; add a smaller detail bit`)
     }
+    if (region.length && !inflate(region, -r).length && !detailed) warnings.push(tooLarge)
   }
   ops.push(...last)
+  if (freed && ops.some((o) => o.role === 'detail')) warnings.push('Parts are cut free before the detail pass; keep tabs on')
 
   const time = (role: BitRole) => {
     const s = cutSettings[role]
