@@ -41,21 +41,21 @@ test('autosaves, reopens after reload, and deletes from home', async ({ page }) 
   await expect(page.getByText('No saved projects yet.')).toBeVisible()
 })
 
-test('saves as a .opencarve file', async ({ page }) => {
+test('saves as a .oc file', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'New project' }).click()
   await drawRect(page)
   await rename(page, 'Test')
   await page.getByText('File', { exact: true }).click()
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Save as file' }).click()])
-  expect(download.suggestedFilename()).toBe('Test.opencarve')
+  expect(download.suggestedFilename()).toBe('Test.oc')
   const json = JSON.parse(Buffer.concat(await (await download.createReadStream()).toArray()).toString())
   expect(json).toMatchObject({ format: 'opencarve', version: 2, project: { name: 'Test', shapes: [{ type: 'rect' }] } })
 })
 
-test('opens a .opencarve file with text and plans its toolpaths', async ({ page }) => {
+test('opens a .oc file with text and plans its toolpaths', async ({ page }) => {
   await page.goto('/')
-  await page.getByLabel('Open project file').setInputFiles('e2e/fixtures/sample.opencarve')
+  await page.getByLabel('Open project file').setInputFiles('e2e/fixtures/sample.oc')
   await expect(page.getByRole('button', { name: 'Project name: Sample sign' })).toBeVisible()
   await expect(page.locator('[data-id]')).toHaveCount(2)
   // The text's glyph outlines (several contours, not the placeholder box) render once its font loads lazily.

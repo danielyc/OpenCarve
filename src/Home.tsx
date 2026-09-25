@@ -13,7 +13,7 @@ export function OpenFileButton({ children, className }: { children: ReactNode; c
       <input
         ref={ref}
         type="file"
-        accept=".opencarve,application/json"
+        accept=".oc,application/json"
         aria-label="Open project file"
         hidden
         onChange={(e) => {
@@ -55,7 +55,7 @@ export default function Home() {
       <main className="home-main">
         <p className="home-intro">Design signs and parts, preview the carve in 3D and export G-code for your CNC router. Projects are saved in this browser.</p>
         <h2>Projects</h2>
-        {projects && !projects.length && <p className="hint">No saved projects yet. Start a new one or open a .opencarve file.</p>}
+        {projects && !projects.length && <p className="hint">No saved projects yet. Start a new one or open a .oc file.</p>}
         <ul className="project-list" aria-label="Projects">
           {projects?.map((p) => (
             <li key={p.id}>

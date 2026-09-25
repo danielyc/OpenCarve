@@ -5,7 +5,7 @@ import { FONTS, forgetFont, getUploadedFont, loadFont, removeUploadedFont, store
 import { fitText } from './geometry'
 import { parseProjectFile, serializeProject, uploadedFontIds, type EmbeddedFonts } from './projectFile'
 
-// IndexedDB layout: an index of entries, one record per project (the same versioned JSON as a .opencarve file,
+// IndexedDB layout: an index of entries, one record per project (the same versioned JSON as a .oc file,
 // so records can later be synced verbatim), and the id of the project to reopen on load.
 export interface ProjectEntry {
   id: string
@@ -218,7 +218,7 @@ export async function downloadProject(p: Project) {
   const url = URL.createObjectURL(new Blob([serializeProject(p, fonts)], { type: 'application/json' }))
   const a = document.createElement('a')
   a.href = url
-  a.download = `${p.name || 'Untitled'}.opencarve`.replace(/[\\/:*?"<>|]/g, '_')
+  a.download = `${p.name || 'Untitled'}.oc`.replace(/[\\/:*?"<>|]/g, '_')
   a.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

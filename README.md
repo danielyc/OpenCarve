@@ -2,6 +2,8 @@
 
 Free, open-source (AGPL-3.0) design and toolpath software for hobby CNC routers, an alternative to Easel. It runs entirely in your browser: no account, no install, no carve limits. Your projects stay on your computer.
 
+**Try it:** https://danielyc.github.io/OpenCarve/ (nothing is uploaded; projects, fonts and settings are stored in your own browser).
+
 ## Features
 
 - **Design**: rectangle, ellipse, polygon, pen (lines and closed paths) and text tools; move, scale, rotate, align, duplicate, nudge, undo/redo.
@@ -16,7 +18,7 @@ Free, open-source (AGPL-3.0) design and toolpath software for hobby CNC routers,
 - **Simulate**: toolpaths on the 2D canvas, a 3D preview of the carved result, warnings and an estimated time.
 - **Toolpath animation**: watch a model of the bit run the job in the 3D preview in G-code order, with play/pause, 1×–50× speed and a scrub bar, and optionally see the material removed as it goes.
 - **Export** G-code for GRBL-compatible machines, one file per bit.
-- **Autosave** in the browser, a project list, and `.opencarve` files to save, share and back up projects.
+- **Autosave** in the browser, a project list, and `.oc` files to save, share and back up projects.
 
 ## Not included (yet)
 
@@ -41,7 +43,7 @@ Tested in Chromium (Chrome, Edge); should work in Firefox and Safari. Toolpaths 
 
 ## Project files
 
-A `.opencarve` file is JSON: `{ "format": "opencarve", "version": 2, "project": { ... } }`. All lengths are in millimetres, whatever the display units. The format is still changing during development: only the current version is read, and there is no backwards compatibility yet.
+A `.oc` file is JSON: `{ "format": "opencarve", "version": 2, "project": { ... } }`. All lengths are in millimetres, whatever the display units. The format is still changing during development: only the current version is read, and there is no backwards compatibility yet.
 
 ## Development
 
@@ -65,7 +67,7 @@ GitHub Actions runs lint, build and all tests on pushes to `main` and on pull re
 The font picker (Inspector → Font) searches three groups:
 
 - **Bundled**: Roboto, Open Sans, Montserrat, Oswald (sans-serif); Lora, Source Serif 4, Merriweather, Cinzel (serif); Pacifico, Dancing Script, Great Vibes, Caveat (handwriting); Bebas Neue, Alfa Slab One, Righteous, Allerta Stencil (display/stencil). They are unmodified static Regular TTFs, from [google/fonts](https://github.com/google/fonts) or, where that only has a variable font, from the font's own project repository (for example googlefonts/opensans, JulietaUla/Montserrat, SorkinType/Merriweather, adobe-fonts/source-serif). All are licensed under the SIL Open Font License 1.1, and each font's licence is next to it in `public/fonts` (`*-OFL.txt`). Allerta Stencil covers basic Latin only; the inspector warns when a font has no glyph for a character in your text.
-- **Your fonts**: upload a `.ttf` or `.otf` (up to 5 MB). It is stored in this browser (IndexedDB) and embedded in `.opencarve` files you save, so a project opens with its fonts elsewhere. A font still used by another saved project can't be removed. Make sure the font's licence allows embedding.
+- **Your fonts**: upload a `.ttf` or `.otf` (up to 5 MB). It is stored in this browser (IndexedDB) and embedded in `.oc` files you save, so a project opens with its fonts elsewhere. A font still used by another saved project can't be removed. Make sure the font's licence allows embedding.
 - **Google Fonts**: "Browse Google Fonts" loads the Google Fonts part of the [Fontsource](https://fontsource.org) index (fonts with a Latin subset, an upright Regular and an OFL, Apache 2.0 or Ubuntu Font licence; the licence is shown per font). Only the Latin subset is downloaded, so accented letters outside it show a missing-glyph warning. A chosen font is downloaded from the jsDelivr CDN and cached in IndexedDB, so it works offline after first use. Projects store only its id, so opening one on another machine needs a connection once.
 
 ## Contributing

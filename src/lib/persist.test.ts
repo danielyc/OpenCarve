@@ -95,7 +95,7 @@ test('two files embedding different fonts under the same id both keep their own 
   vi.spyOn(window, 'alert').mockImplementation(() => {})
   const [lora, roboto] = [fontBuf('Lora-Regular.ttf'), fontBuf('Roboto-Regular.ttf')]
   const fileWith = (data: ArrayBuffer, name: string) =>
-    new File([serializeProject({ ...newProject(), shapes: [textIn('upload:shared')] }, { 'upload:shared': { name, data } })], `${name}.opencarve`)
+    new File([serializeProject({ ...newProject(), shapes: [textIn('upload:shared')] }, { 'upload:shared': { name, data } })], `${name}.oc`)
   await openFile(fileWith(lora, 'Lora'))
   expect(fontOf()).toBe('upload:shared')
   await openFile(fileWith(roboto, 'Roboto'))

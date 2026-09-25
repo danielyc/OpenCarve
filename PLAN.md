@@ -7,7 +7,7 @@ ease of use (Design → Simulate → Export) without the carve limits or paywall
 - v1 scope: Easel Basic parity + V-carve. No machine sender (export G-code only).
 - Stack: TypeScript, Vite, React, Zustand, bun. SVG DOM for the 2D canvas, three.js for 3D preview.
 - Geometry: clipper2-ts (offset/booleans), flo-mat (medial axis for V-carve), opentype.js (text). Heavy work runs in a Web Worker.
-- Storage: IndexedDB autosave + `.opencarve` JSON files. Model kept serialisable so a sync backend can be added later.
+- Storage: IndexedDB autosave + `.oc` JSON files. Model kept serialisable so a sync backend can be added later.
 - Units: mm internally, mm default, inch toggle. G-code: generic GRBL-compatible (G21/G90, absolute).
 - UI: Easel's workflow and panel structure, original visual design. Left tool rail, 2D canvas + 3D preview, right cut-settings panel.
 - Tests: Vitest for geometry + G-code, Playwright smoke test for the main flow.
@@ -22,7 +22,7 @@ ease of use (Design → Simulate → Export) without the carve limits or paywall
 6. **V-carve** — medial axis via flo-mat, depth from disk radius and bit angle, max-depth flat clearing, chained toolpath. Vitest coverage.
 7. **3D preview** — heightmap material-removal simulation in the worker (tool cross-section stamped per move), three.js displaced mesh, toolpath lines, orbit controls, live update on settings change.
 8. **Simulate + Export UI** — toolpath overlay on 2D canvas, warnings (bit larger than pocket, depth > material), G-code download, per-bit files for two-stage carves, estimated time.
-9. **Persistence** — IndexedDB autosave, project list/home screen, new/open/save-as `.opencarve`, unit toggle persisted.
+9. **Persistence** — IndexedDB autosave, project list/home screen, new/open/save-as `.oc`, unit toggle persisted.
 10. **Polish + smoke test** — Playwright flow (new project → rect → pocket → export), README usage docs, GitHub Pages build config.
 
 ## Status
@@ -35,7 +35,7 @@ All ten steps are done.
 6. V-carve: medial-axis V-carve with flat-floor clearing by the endmill or the V-bit.
 7. 3D preview: heightmap material-removal simulation in a worker, three.js mesh, toolpath lines, orbit controls.
 8. Simulate + Export UI: 2D toolpath overlay, per-op list, warnings, per-bit G-code downloads, setup note.
-9. Persistence: IndexedDB autosave, home screen with project list, `.opencarve` open/save.
+9. Persistence: IndexedDB autosave, home screen with project list, `.oc` open/save.
 10. Polish: full-flow e2e, README, CI and GitHub Pages workflows, relative build paths, tool shortcuts and shortcut help, page title.
 
 v1.1 steps 11–14 are done too.
@@ -71,7 +71,7 @@ Decisions: animation = tool model travelling the path in the 3D preview with pla
 11. **Toolpath animation** — `src/preview/` playback: tool mesh (cylinder / ball / cone by bit), timeline over all ops in G-code order using per-move times, play/pause, 1×–50× speed, scrub slider, current op highlighted; optional progressive material removal (incremental heightmap in the sim worker: stamp only newly reached moves; backwards scrub recomputes from scratch).
 12. **Machine preset + bit overrides** — TTC450 500 W preset; `Bit` override fields on the project (`bitOverrides: Record<BitRole, Partial<Bit>>`), inspector fields next to each picker, recommended settings recomputed from the effective bit.
 13. **Text controls** — model fields on TextShape: `letterSpacing` (mm), `lineHeight` (× size), `align` (left|center|right), `arc` (bend in degrees, 0 = straight, ± for up/down), `mirror` (boolean); layout in fonts.ts; inspector controls; SVG-import-like validation in projectFile.
-14. **Fonts** — 12 more bundled OFL fonts with licence files; font sources: bundled | uploaded (IndexedDB blob + base64 in `.opencarve`) | fontsource (id → CDN TTF, cached in IndexedDB); font picker with search/category over the Fontsource index (fetched once, cached); text shapes store `font: string` as `bundled:id` / `upload:id` / `fs:id` (bundled ids stay backwards compatible).
+14. **Fonts** — 12 more bundled OFL fonts with licence files; font sources: bundled | uploaded (IndexedDB blob + base64 in `.oc`) | fontsource (id → CDN TTF, cached in IndexedDB); font picker with search/category over the Fontsource index (fetched once, cached); text shapes store `font: string` as `bundled:id` / `upload:id` / `fs:id` (bundled ids stay backwards compatible).
 
 ## v1.2 — requested 2026-09-25
 15. **Work zero** — `project.origin: { preset: 'bottom-left'|'bottom-right'|'top-left'|'top-right'|'center'|'custom'; x; y /* mm from the stock's bottom-left */; z: 'top'|'bottom' }`. Shapes stay in stock coordinates (bottom-left based); G-code subtracts the XY zero and, for Z zero = bottom, adds the stock thickness. Canvas origin marker, cursor readout and inspector X/Y are shown relative to the chosen zero; presets follow stock resizes; Export note and G-code header state the zero.
