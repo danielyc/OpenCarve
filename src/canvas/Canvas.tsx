@@ -1,8 +1,8 @@
-import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { opKey, type Op, type Pt3 } from '../cam/toolpath'
 import { icons } from '../icons'
 import { FONTS, loadFont } from '../lib/fonts'
-import { dominantScale, fitText, localBounds, polylineBounds, scaleShape, shapeBounds, shapeToPolylines, toLocal, toWorld, type Bounds } from '../lib/geometry'
+import { dominantScale, fitText, gridPath, localBounds, polylineBounds, scaleShape, shapeBounds, shapeToPolylines, toLocal, toWorld, type Bounds } from '../lib/geometry'
 import { formatLength, nearestSnap, SNAP_SIZES, snapDelta, snapPoint } from '../lib/units'
 import { DEFAULT_TEXT_LAYOUT, newId, tabsActive, type Point, type Polyline, type Shape } from '../model'
 import { TOOL_KEYS, useAppStore, type Align, type Tool } from '../store'
@@ -169,6 +169,7 @@ export default function Canvas() {
   const [hover, setHover] = useState<string | null>(null)
   const [cursor, setCursor] = useState<Point | null>(null)
   const [space, setSpace] = useState(false)
+  const [svgSize, setSvgSize] = useState<Point>([0, 0])
   const [pen, setPen] = useState<Point[]>([])
   if (tool !== 'pen' && pen.length) setPen([])
 
@@ -204,6 +205,13 @@ export default function Canvas() {
   }
 
   useEffect(() => fitTo(svgRef.current), [stock.w, stock.h])
+
+  useEffect(() => {
+    const svg = svgRef.current!
+    const ro = new ResizeObserver(() => setSvgSize([svg.clientWidth, svg.clientHeight]))
+    ro.observe(svg)
+    return () => ro.disconnect()
+  }, [])
 
   useEffect(() => {
     const svg = svgRef.current!
@@ -371,15 +379,18 @@ export default function Canvas() {
     setDrag(null)
   }
 
-  // The minor grid is the snap grid while snapping (10 mm otherwise); lines under the 50 mm major grid are harmless.
-  const minorStep = snap.on ? snapSize : 10
-  const showMinor = zoom * minorStep >= 6
-  const minor: string[] = []
-  const major: string[] = []
-  for (let i = 1; showMinor && i * minorStep < stock.w; i++) minor.push(`M${i * minorStep} 0V${stock.h}`)
-  for (let i = 1; showMinor && i * minorStep < stock.h; i++) minor.push(`M0 ${i * minorStep}H${stock.w}`)
-  for (let x = 50; x < stock.w; x += 50) major.push(`M${x} 0V${stock.h}`)
-  for (let y = 50; y < stock.h; y += 50) major.push(`M0 ${y}H${stock.w}`)
+  // Major lines every 50 mm or 1"; the minor grid is the snap grid while snapping (10 mm or 1/4" otherwise).
+  // Lines under the major grid are harmless. Only the visible part is drawn, and not again on cursor-only renders.
+  const [svgW, svgH] = svgSize
+  const { minor, major } = useMemo(() => {
+    const inch = units === 'in'
+    const minorStep = snap.on ? nearestSnap(snap.size, units) : inch ? 6.35 : 10
+    const area = { minX: -panX / zoom, maxX: (svgW - panX) / zoom, minY: (panY - svgH) / zoom, maxY: panY / zoom }
+    return {
+      minor: zoom * minorStep >= 6 ? gridPath(stock.w, stock.h, minorStep, area) : null,
+      major: gridPath(stock.w, stock.h, inch ? 25.4 : 50, area),
+    }
+  }, [stock.w, stock.h, snap.on, snap.size, units, panX, panY, zoom, svgW, svgH])
 
   const preview =
     drag?.kind === 'create' && tool !== 'select' && tool !== 'pen' && tool !== 'text' ? makeShape(tool, drag.start, drag.current, drag.shift, 3 / zoom) : null
@@ -429,7 +440,7 @@ export default function Canvas() {
         )}
         {step === 'design' && (
           <>
-            <button aria-pressed={snap.on} title="Snap to grid (G, hold Alt to bypass)" onClick={() => useAppStore.getState().setSnap({ on: !snap.on })}>
+            <button aria-pressed={snap.on} title="Snap to grid, anchored at the stock's bottom-left corner (G, hold Alt to bypass)" onClick={() => useAppStore.getState().setSnap({ on: !snap.on })}>
               Snap
             </button>
             <select className="snap-size" aria-label="Snap size" value={snapSize} onChange={(e) => useAppStore.getState().setSnap({ size: Number(e.target.value) })}>
@@ -458,8 +469,8 @@ export default function Canvas() {
       >
         <g transform={`translate(${panX} ${panY}) scale(${zoom} ${-zoom})`}>
           <rect className="material" width={stock.w} height={stock.h} />
-          {showMinor && <path className="grid-minor" d={minor.join('')} />}
-          <path className="grid-major" d={major.join('')} />
+          {minor !== null && <path className="grid-minor" d={minor} />}
+          <path className="grid-major" d={major} />
           <rect className="material-edge" width={stock.w} height={stock.h} />
           {project.shapes.map((s) => {
             const polys = shapeToPolylines(s)

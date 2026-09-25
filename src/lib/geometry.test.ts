@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import type { Shape } from '../model'
-import { scaleShape, shapeBounds, shapeToPolylines } from './geometry'
+import { gridPath, scaleShape, shapeBounds, shapeToPolylines } from './geometry'
 
 const base = { id: 'a', name: 'a', x: 50, y: 20, rotation: 0 }
 
@@ -39,4 +39,19 @@ test('path bounds and scaling', () => {
   const shape: Shape = { ...base, type: 'path', points: [[-5, 0], [5, 10], [0, -10]], closed: true }
   close(shapeBounds(shape), { minX: 45, minY: 10, maxX: 55, maxY: 30 })
   close(shapeBounds(scaleShape(shape, 2, 0.5)), { minX: 40, minY: 15, maxX: 60, maxY: 25 })
+})
+
+test('grid lines stay inside the stock and near the visible area', () => {
+  const all = { minX: -Infinity, minY: -Infinity, maxX: Infinity, maxY: Infinity }
+  expect(gridPath(30, 20, 10, all)).toBe('M10 0V20M20 0V20M0 10H30')
+  expect(gridPath(100, 100, 10, { minX: 42, minY: 200, maxX: 58, maxY: 300 })).toBe('')
+  // Visible 42..58 × 0..15, plus one step: x 32..68 → 40, 50, 60; y 0..25 → 10, 20.
+  expect(gridPath(100, 100, 10, { minX: 42, minY: 0, maxX: 58, maxY: 15 })).toBe('M40 0V25M50 0V25M60 0V25M32 10H68M32 20H68')
+})
+
+test('a fine grid on a large stock is bounded by the viewport', () => {
+  const [pxW, pxH, pxPerMm] = [1600, 1000, 12]
+  const area = { minX: 400, minY: 400, maxX: 400 + pxW / pxPerMm, maxY: 400 + pxH / pxPerMm }
+  const lines = gridPath(1000, 1000, 0.5, area).split('M').length - 1
+  expect(lines).toBeLessThanOrEqual(2 * (Math.max(pxW, pxH) / 6))
 })

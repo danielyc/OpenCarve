@@ -120,3 +120,15 @@ export function scaleShape(shape: Shape, sx: number, sy: number): Shape {
       return { ...shape, w: shape.w * Math.abs(sx), h: shape.h * Math.abs(sy) }
   }
 }
+
+// Grid lines every `step` mm strictly inside a w × h stock, limited to the visible area plus one step, so the
+// line count is bounded by the viewport rather than the stock.
+export function gridPath(w: number, h: number, step: number, area: Bounds) {
+  const d: string[] = []
+  const [x0, x1] = [Math.max(0, area.minX - step), Math.min(w, area.maxX + step)]
+  const [y0, y1] = [Math.max(0, area.minY - step), Math.min(h, area.maxY + step)]
+  if (x0 >= x1 || y0 >= y1) return ''
+  for (let i = Math.max(1, Math.ceil(x0 / step)); i * step <= x1 && i * step < w; i++) d.push(`M${i * step} ${y0}V${y1}`)
+  for (let i = Math.max(1, Math.ceil(y0 / step)); i * step <= y1 && i * step < h; i++) d.push(`M${x0} ${i * step}H${x1}`)
+  return d.join('')
+}
