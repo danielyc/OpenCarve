@@ -72,6 +72,8 @@ The font picker (Inspector → Font) searches three groups:
 - **Your fonts**: upload a `.ttf` or `.otf` (up to 5 MB). It is stored in this browser (IndexedDB) and embedded in `.oc` files you save, so a project opens with its fonts elsewhere. A font still used by another saved project can't be removed. Make sure the font's licence allows embedding.
 - **Google Fonts**: "Browse Google Fonts" loads the Google Fonts part of the [Fontsource](https://fontsource.org) index (fonts with a Latin subset, an upright Regular and an OFL, Apache 2.0 or Ubuntu Font licence; the licence is shown per font). Only the Latin subset is downloaded, so accented letters outside it show a missing-glyph warning. A chosen font is downloaded from the jsDelivr CDN and cached in IndexedDB, so it works offline after first use. Projects store only its id, so opening one on another machine needs a connection once.
 
+Each font's name in the picker is shown in that font, loaded only for the rows you scroll to. For Google Fonts this downloads a small woff2 preview per visible row from jsDelivr; turn off "Preview fonts" at the top of that list to skip those downloads.
+
 ## Contributing
 
 Issues and pull requests are welcome. [PLAN.md](PLAN.md) describes the architecture decisions, the build steps and the known limitations. Please run lint and the tests before opening a pull request.

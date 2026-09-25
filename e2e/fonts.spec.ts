@@ -47,6 +47,20 @@ test('keys on the font picker trigger never reach the canvas shortcuts', async (
   await expect(page.getByLabel('Search fonts')).toBeHidden()
 })
 
+test('renders picker rows in their own fonts', async ({ page }) => {
+  await page.getByRole('button', { name: 'Font: Roboto' }).click()
+  const lora = page.getByRole('region', { name: 'Bundled' }).getByRole('button', { name: /^Lora/ })
+  await expect(lora).toHaveAttribute('data-preview', 'loaded')
+  expect(await lora.evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/^"?oc-preview-lora"?,/)
+
+  await page.getByLabel('Upload font file').setInputFiles('public/fonts/Roboto-Regular.ttf')
+  const uploaded = page.getByRole('region', { name: 'Your fonts' }).getByRole('button', { name: /^Roboto/ })
+  await expect(uploaded).not.toHaveAttribute('data-preview') // below the fold: previews load only in view
+  await uploaded.scrollIntoViewIfNeeded()
+  await expect(uploaded).toHaveAttribute('data-preview', 'loaded')
+  expect(await uploaded.evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/^"?oc-preview-upload-/)
+})
+
 test('warns about characters the font cannot draw', async ({ page }) => {
   await page.getByRole('button', { name: 'Font: Roboto' }).click()
   await page.getByLabel('Search fonts').fill('Allerta')
