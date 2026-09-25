@@ -163,6 +163,10 @@ export default function Preview3D() {
     idx: number // move the highlight was split at
   }>({ idx: -1 })
   const tip = useRef<Pt3>([0, 0, 0])
+  // sync draws at most once per frame: one change fans out to several effects (lines, tool, timeline, surface), and
+  // a synchronous draw each is costly with a million-triangle surface (seconds in software WebGL).
+  const drawFrame = useRef(0)
+  useEffect(() => () => cancelAnimationFrame(drawFrame.current), [])
 
   // Puts the tool, the travelled path and the removed material at tRef, all from the same timeline index.
   const sync = useCallback(() => {
@@ -199,7 +203,10 @@ export default function Preview3D() {
     const showProgress = progressive && !!o.progress
     if (o.progress) o.progress.visible = showProgress
     if (o.surface) o.surface.visible = !showProgress
-    view.render()
+    drawFrame.current ||= requestAnimationFrame(() => {
+      drawFrame.current = 0
+      viewRef.current?.render()
+    })
   }, [])
 
   useEffect(() => {

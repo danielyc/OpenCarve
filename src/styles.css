@@ -1077,11 +1077,7 @@ input.project-name {
   --playback-h: 64px;
 }
 
-.preview3d.has-playback .preview3d-host {
-  bottom: var(--playback-h);
-  height: auto;
-}
-
+/* The bar overlays the canvas rather than shrinking it: resizing the canvas on every step switch forces a full redraw. */
 .preview3d.has-playback .preview3d-legend {
   bottom: calc(var(--playback-h) + 8px);
 }
