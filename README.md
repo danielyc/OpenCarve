@@ -45,7 +45,7 @@ Tested in Chromium (Chrome, Edge); should work in Firefox and Safari. Toolpaths 
 
 ## Project files
 
-A `.oc` file is JSON: `{ "format": "opencarve", "version": 2, "project": { ... } }`. All lengths are in millimetres, whatever the display units. The format is still changing during development: only the current version is read, and there is no backwards compatibility yet.
+A `.oc` file is JSON: `{ "format": "opencarve", "version": 2, "project": { ... } }`. All lengths are in millimetres, whatever the display units. Newer versions of OpenCarve keep opening files saved by earlier versions.
 
 ## Development
 

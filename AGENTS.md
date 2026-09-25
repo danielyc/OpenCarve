@@ -31,7 +31,7 @@ A change is done only when all four of lint, build, test and test:e2e pass. If p
 - All lengths are millimetres internally; the UI converts for inch display. Shapes and toolpaths use stock coordinates (origin at the stock's bottom-left, Y up, Z zero at the stock top); the work zero is applied only in the G-code writer and the display.
 - Toolpath and G-code code is safety-critical: never change offsets, depths, tabs, cut direction, safe-Z handling or the G-code header/footer without a unit test that would fail on the old behaviour. Verify numerically (points inside region, depth ≤ intended) rather than by eye.
 - The project loader is strict: every field the app writes is required, and UI setters clamp to the same `LIMITS` the loader enforces. Keep those two in sync.
-- No backwards compatibility during development: when the project format changes, bump `FILE_VERSION` and reject older files; don't write migrations.
+- Project files are a public format since the first release: when it changes, bump `FILE_VERSION` and add a migration in `projectFile.ts` so every earlier version still loads; cover it with a round-trip test from a fixture of the old version.
 - Heavy work (planning, simulation, medial axis) runs in workers; keep the main thread free of clipper/three imports outside `preview/`.
 - Prefer the smallest change that works: no speculative abstractions, few files, no comments on obvious code. Mark deliberate ceilings with a `ponytail:` comment naming the limit and the upgrade path.
 - Accessibility basics are not optional: labelled controls, visible focus, keyboard reachability, no icon-only buttons without `aria-label`.
