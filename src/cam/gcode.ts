@@ -40,17 +40,15 @@ export const xyZeroLabel = ({ origin: o }: Project) => (o.preset === 'custom' ? 
 export const zZeroLabel = ({ origin: o }: Project) => (o.z === 'top' ? 'top of stock' : 'bottom of stock (spoilboard)')
 
 const userLines = (block: string) => (block.trim() ? block.trim().split(/\r?\n/) : [])
+const zOffset = (p: Project) => (p.origin.z === 'bottom' ? p.stock.thickness : 0)
 
-// Append mode: standard setup, the user's header, spindle start … final retract, the user's footer, spindle stop and end.
-// replaceDefaults: only the comments, the user's header, the moves and the user's footer; the user owns units and spindle.
-export function toGcode(result: Pick<CamResult, 'ops'>, role: BitRole, project: Project): string {
+// The file is comments + setup + moves + end. Append mode: the standard setup line, the user's header, the standard
+// setup again (in case the header changed a mode), safe Z and spindle start; after the moves the user's footer, spindle
+// stop and program end. replaceDefaults: only the comments, the user's header, safe Z, the moves and the user's footer.
+export function gcodeHead(project: Project, role: BitRole): { comments: string[]; setup: string[] } {
   const s = project.cutSettings[role]!
-  // Toolpaths are in stock coordinates (Z zero at the top); shift them to the work zero.
-  const { x: ox, y: oy, z: zero } = project.origin
-  const dz = zero === 'bottom' ? project.stock.thickness : 0
-  const work = (p: Pt3) => [p[0] - ox, p[1] - oy, p[2] + dz]
   const comment = (t: string) => `; ${t.replace(/[^ -~]+/g, ' ')}`
-  const lines = [
+  const comments = [
     comment('OpenCarve'),
     comment(`Project: ${project.name}`),
     comment(`Bit: ${effectiveBit(project, role).name}`),
@@ -59,14 +57,26 @@ export function toGcode(result: Pick<CamResult, 'ops'>, role: BitRole, project: 
     comment(`XY zero: ${xyZeroLabel(project)}`),
     comment(`Z zero: ${zZeroLabel(project)}`),
   ]
-  const { header, footer, replaceDefaults: own } = project.gcode
-  if (!own) lines.push('G21 G90 G17 G94')
-  lines.push(...userLines(header), `G0 Z${fmt(s.safeZ + dz)}`)
-  if (!own) lines.push(`M3 S${s.rpm}`, `G4 P${SPINUP_SEC}`)
+  const { header, replaceDefaults: own } = project.gcode
+  const user = userLines(header)
+  const modes = own ? [] : ['G21 G90 G17 G94']
+  const setup = [...modes, ...user, ...(user.length ? modes : []), `G0 Z${fmt(s.safeZ + zOffset(project))}`, ...(own ? [] : [`M3 S${s.rpm}`, `G4 P${SPINUP_SEC}`])]
+  return { comments, setup }
+}
+
+export const gcodeTail = ({ gcode }: Project) => [...userLines(gcode.footer), ...(gcode.replaceDefaults ? [] : ['M5', 'M2'])]
+
+// The toolpath moves for one bit, ending with the final retract to safe Z. Depends only on the ops, that bit's cut
+// settings and the work zero, so callers can cache it while the header and footer change.
+export function gcodeMoves(ops: Op[], role: BitRole, s: CutSettings, origin: Project['origin'], thickness: number): string[] {
+  // Toolpaths are in stock coordinates (Z zero at the top); shift them to the work zero.
+  const dz = origin.z === 'bottom' ? thickness : 0
+  const work = (p: Pt3) => [p[0] - origin.x, p[1] - origin.y, p[2] + dz]
+  const lines: string[] = []
   let feed = 0
   let z = s.safeZ
   walk(
-    result.ops.filter((o) => o.role === role),
+    ops.filter((o) => o.role === role),
     [NaN, NaN, s.safeZ],
     (seg, a, b) => {
       z = b[2]
@@ -81,8 +91,11 @@ export function toGcode(result: Pick<CamResult, 'ops'>, role: BitRole, project: 
     },
   )
   if (z !== s.safeZ) lines.push(`G0 Z${fmt(s.safeZ + dz)}`)
-  lines.push(...userLines(footer))
-  if (!own) lines.push('M5', 'M2')
-  lines.push('')
-  return lines.join('\n')
+  return lines
+}
+
+export function toGcode(result: Pick<CamResult, 'ops'>, role: BitRole, project: Project): string {
+  const { comments, setup } = gcodeHead(project, role)
+  const moves = gcodeMoves(result.ops, role, project.cutSettings[role]!, project.origin, project.stock.thickness)
+  return [...comments, ...setup, ...moves, ...gcodeTail(project), ''].join('\n')
 }

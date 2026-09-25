@@ -1,9 +1,9 @@
 import { useId, useMemo, useState } from 'react'
-import { toGcode } from './cam/gcode'
+import { gcodeHead, gcodeMoves, gcodeTail } from './cam/gcode'
 import { Field, Section, Segmented } from './Inspector'
 import { BITS, effectiveBit, findBit, findMaterial, MACHINES, MATERIALS, overrideError } from './lib/library'
 import { formatLength, mmToIn, parseLength, type Units } from './lib/units'
-import { gcodeBlockError, MAX_GCODE_BLOCK, MAX_STEPOVER, type BitOverride, type BitRole, type OriginPreset } from './model'
+import { gcodeBlockError, gcodeHeaderWarnings, MAX_GCODE_BLOCK, MAX_STEPOVER, type BitOverride, type BitRole, type OriginPreset } from './model'
 import { useAppStore } from './store'
 
 const BIT_TYPES = { endmill: 'Endmill', ballnose: 'Ballnose', vbit: 'V-bit' }
@@ -138,11 +138,18 @@ function GcodeSection() {
   const [errors, setErrors] = useState<{ header?: string; footer?: string }>({})
   const id = useId()
   const { replaceDefaults } = project.gcode
-  // ponytail: renders the whole rough file per edit; emit only the first/last op if big jobs make typing lag.
-  const preview = useMemo(() => {
-    const lines = toGcode(cam ?? { ops: [] }, 'rough', project).trimEnd().split('\n')
-    return lines.length > 2 * PREVIEW_LINES + 1 ? [...lines.slice(0, PREVIEW_LINES), '…', ...lines.slice(-PREVIEW_LINES)] : lines
-  }, [cam, project])
+  // The moves are cached; a G-code edit only recomposes the head and tail around them.
+  const settings = project.cutSettings.rough
+  const { origin } = project
+  const thickness = project.stock.thickness
+  const moves = useMemo(() => gcodeMoves(cam?.ops ?? [], 'rough', settings, origin, thickness), [cam, settings, origin, thickness])
+  const { comments, setup } = gcodeHead(project, 'rough')
+  const tail = gcodeTail(project)
+  // Comments collapsed to one line, the setup (with the user's header) in full, then the end of the file: at least
+  // the last PREVIEW_LINES lines, and all of the footer plus the final retract.
+  const end = [...moves.slice(-PREVIEW_LINES), ...tail].slice(-Math.max(PREVIEW_LINES, tail.length + 1))
+  const hidden = moves.length + tail.length - end.length
+  const preview = [`${comments[0]} (+ ${comments.length - 1} comment lines)`, ...setup, ...(hidden > 0 ? ['…'] : []), ...end]
   const block = (key: 'header' | 'footer', label: string, hint: string) => (
     <>
       <Field
@@ -155,7 +162,7 @@ function GcodeSection() {
         invalid={!!errors[key]}
         describedBy={`${id}-${key}`}
         onCommit={(t) => {
-          const error = gcodeBlockError(t)
+          const error = gcodeBlockError(t, key === 'header')
           setErrors((e) => ({ ...e, [key]: error ? `This block ${error}.` : undefined }))
           if (!error) useAppStore.getState().setGcode({ [key]: t })
         }}
@@ -178,11 +185,16 @@ function GcodeSection() {
           Your blocks must then set units and absolute mode (G21 G90), start the spindle (M3 S…), stop it (M5) and end the program (M2).
         </p>
       )}
+      {gcodeHeaderWarnings(project.gcode).map((w) => (
+        <p key={w} className="hint field-error">
+          {w}.
+        </p>
+      ))}
       <h3 className="subhead">Rough file preview</h3>
       <pre className="gcode-preview" aria-label="G-code preview" tabIndex={0}>
         {preview.join('\n')}
       </pre>
-      <p className="hint">Each block is limited to {MAX_GCODE_BLOCK.toLocaleString('en')} plain ASCII characters.</p>
+      <p className="hint">Each block is limited to {MAX_GCODE_BLOCK.toLocaleString('en')} plain ASCII characters. The header can't switch to inches (G20), incremental moves (G91) or inverse-time feeds (G93).</p>
     </Section>
   )
 }

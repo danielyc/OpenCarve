@@ -1,9 +1,10 @@
+import { useMemo } from 'react'
 import { xyZeroLabel } from './cam/gcode'
 import { opKey, type Op } from './cam/toolpath'
 import { icons } from './icons'
 import { effectiveBit, findMaterial } from './lib/library'
 import { formatLength } from './lib/units'
-import type { BitRole, Cut } from './model'
+import { gcodeHeaderWarnings, type BitRole, type Cut } from './model'
 import { timelineFor } from './preview/timeline'
 import { useAppStore } from './store'
 
@@ -43,8 +44,15 @@ export function Summary() {
   )
 }
 
+// The planner's warnings plus the custom G-code checks, which don't need a replan (useCam ignores G-code edits).
+export function useWarnings() {
+  const cam = useAppStore((s) => s.cam?.warnings)
+  const gcode = useAppStore((s) => s.project.gcode)
+  return useMemo(() => [...gcodeHeaderWarnings(gcode), ...(cam ?? [])], [cam, gcode])
+}
+
 export function Warnings() {
-  const warnings = useAppStore((s) => s.cam?.warnings)
+  const warnings = useWarnings()
   return (
     <div aria-live="polite">
       {!!warnings?.length && (

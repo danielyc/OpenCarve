@@ -50,12 +50,25 @@ function plan(project: Project) {
   worker.postMessage({ id: ++latest, project: flattenText(project) })
 }
 
+// The planner ignores the project name and the custom G-code, so editing them doesn't replan (or re-simulate).
+const planningChanged = (a: Project, b: Project) =>
+  (Object.keys(a) as (keyof Project)[]).some((k) => k !== 'gcode' && k !== 'name' && a[k] !== b[k])
+
 export function useCam() {
-  const project = useAppStore((s) => s.project)
-  const fontsVersion = useAppStore((s) => s.fontsVersion)
   useEffect(() => {
-    useAppStore.setState({ camBusy: true })
-    const t = setTimeout(() => plan(project), DEBOUNCE_MS)
-    return () => clearTimeout(t)
-  }, [project, fontsVersion])
+    let t: ReturnType<typeof setTimeout> | undefined
+    const schedule = (project: Project) => {
+      useAppStore.setState({ camBusy: true })
+      clearTimeout(t)
+      t = setTimeout(() => plan(project), DEBOUNCE_MS)
+    }
+    schedule(useAppStore.getState().project)
+    const unsubscribe = useAppStore.subscribe((s, prev) => {
+      if (s.fontsVersion !== prev.fontsVersion || (s.project !== prev.project && planningChanged(s.project, prev.project))) schedule(s.project)
+    })
+    return () => {
+      unsubscribe()
+      clearTimeout(t)
+    }
+  }, [])
 }

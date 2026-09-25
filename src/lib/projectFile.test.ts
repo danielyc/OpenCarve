@@ -77,10 +77,11 @@ test('a missing field is rejected with its path', () => {
   expect(() => parseProject(without(everyShape(), 'bits.detail'))).toThrow('Invalid project file: cutSettings.detail is present without a detail bit')
 })
 
-test('custom G-code: printable ASCII and line breaks only, at most 20 000 characters', () => {
+test('custom G-code: printable ASCII, tabs and line breaks, no G20/G91/G93 in the header, at most 20 000 characters', () => {
   const g = (patch: object) => file({ ...sample(), gcode: { ...sample().gcode, ...patch } })
   expect(parseProject(g({ header: 'G54\r\nM8 ; ok ~', footer: 'x'.repeat(20_000) })).gcode.header).toBe('G54\r\nM8 ; ok ~')
-  for (const [key, bad] of [['header', 'M3 S1000 °'], ['footer', 'M5\tM2'], ['header', 'é'], ['footer', 'x'.repeat(20_001)]]) {
+  expect(parseProject(g({ header: 'G21\tG90 (not G20) ; G91 later', footer: 'G91 G0 Z10\nG20' })).gcode.footer).toBe('G91 G0 Z10\nG20')
+  for (const [key, bad] of [['header', 'M3 S1000 °'], ['footer', 'M5\u0007M2'], ['header', 'é'], ['footer', 'x'.repeat(20_001)], ['header', 'G20'], ['header', 'g91.1'], ['header', 'G21 G020'], ['header', 'G90G91'], ['header', 'G93 G1 X1 F2']]) {
     expect(() => parseProject(g({ [key]: bad }))).toThrow(`Invalid project file: gcode.${key} `)
   }
   expect(() => parseProject(g({ header: 3 }))).toThrow('gcode.header must be a string')

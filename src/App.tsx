@@ -8,7 +8,7 @@ import { importSvg } from './lib/svgImport'
 import Preview3D from './preview/Preview3D'
 import ProjectMenu from './ProjectMenu'
 import SettingsPanel from './SettingsPanel'
-import SimulatePanel from './SimulatePanel'
+import SimulatePanel, { useWarnings } from './SimulatePanel'
 import { TOOL_KEYS, useAppStore, type Step, type Tool } from './store'
 
 const STEPS: { id: Step; label: string }[] = [
@@ -59,7 +59,7 @@ export default function App() {
   const setStep = useAppStore((s) => s.setStep)
   const tool = useAppStore((s) => s.tool)
   const setTool = useAppStore((s) => s.setTool)
-  const warnings = useAppStore((s) => s.cam?.warnings.length ?? 0)
+  const warnings = useWarnings().length
   const fileRef = useRef<HTMLInputElement>(null)
   const [dropping, setDropping] = useState(false)
   const name = useAppStore((s) => s.project.name)

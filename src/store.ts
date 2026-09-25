@@ -286,7 +286,9 @@ export const useAppStore = create<AppState>()((set, get) => {
     setMachine: (m) =>
       setProject((p) => recommended({ ...p, machine: { ...m, w: Math.max(LIMITS.travel, m.w), h: Math.max(LIMITS.travel, m.h), maxRpm: Math.max(LIMITS.maxRpm, m.maxRpm) } })),
     setGcode: (patch) =>
-      setProject((p) => ([patch.header, patch.footer].some((t) => t !== undefined && gcodeBlockError(t)) ? p : { ...p, gcode: { ...p.gcode, ...patch } })),
+      setProject((p) =>
+        (patch.header !== undefined && gcodeBlockError(patch.header, true)) || (patch.footer !== undefined && gcodeBlockError(patch.footer)) ? p : { ...p, gcode: { ...p.gcode, ...patch } },
+      ),
     setCut: (ids, patch) =>
       setProject((p) => {
         const t = p.stock.thickness

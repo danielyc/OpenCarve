@@ -20,14 +20,45 @@ test('Settings hides the 3D preview and widens the panel', async ({ page }) => {
   const panel = page.locator('.panel')
   const preview = page.getByLabel('3D carve preview')
   await expect(preview).toBeVisible()
-  const narrow = (await panel.boundingBox())!.width
+  const narrow = 280 // the Design panel column; polled, as the step change animates the width
+  await expect.poll(async () => (await panel.boundingBox())!.width).toBe(narrow)
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
   await expect(preview).toBeHidden()
   await expect.poll(async () => (await panel.boundingBox())!.width).toBeGreaterThan(narrow + 200)
   await expect(page.getByLabel('Design canvas')).toBeVisible()
   await page.getByRole('button', { name: 'Design', exact: true }).click()
   await expect(preview).toBeVisible()
-  await expect.poll(async () => (await panel.boundingBox())!.width).toBeCloseTo(narrow, 0)
+  await expect.poll(async () => (await panel.boundingBox())!.width).toBe(narrow)
+})
+
+test('a stock change on Settings after orbiting re-frames the 3D view on return', async ({ page }) => {
+  const preview = page.getByLabel('3D carve preview')
+  const panelWidth = async () => (await page.locator('.panel').boundingBox())!.width
+  await expect.poll(panelWidth).toBe(280) // the step transition is over
+  await expect(preview).toHaveAttribute('data-view-distance', /\d/)
+  const b = (await preview.boundingBox())!
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(b.x + b.width / 2 + 60, b.y + b.height / 2 + 30, { steps: 5 })
+  await page.mouse.up()
+  // The width transition can leave the renderer at a tiny size before the preview reaches 0 wide; pin that state.
+  const tiny = await page.addStyleTag({ content: '.app.step-settings .preview3d { flex-basis: 12px !important }' })
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await expect.poll(async () => (await preview.boundingBox())?.width ?? 0).toBeLessThan(20)
+  await page.waitForTimeout(100) // let the ResizeObserver resize the renderer
+  await tiny.evaluate((el) => (el as Element).remove())
+  await expect(preview).toBeHidden()
+  const width = page.getByLabel('Width', { exact: true })
+  await width.fill('500')
+  await width.press('Enter')
+  await page.getByRole('button', { name: 'Design', exact: true }).click()
+  await expect(preview).toBeVisible()
+  await expect.poll(panelWidth).toBe(280)
+  const distance = async () => Number(await preview.getAttribute('data-view-distance'))
+  const back = await distance()
+  expect(back).toBeLessThan(10) // a view framed on the collapsed canvas would be far away
+  await page.getByRole('button', { name: 'Reset view' }).click()
+  expect(await distance()).toBeCloseTo(back, 2)
 })
 
 test('Design with nothing selected summarises the project and links to Settings', async ({ page }) => {
@@ -252,6 +283,10 @@ test('adds a custom G-code header and replaces the standard lines', async ({ pag
   await header.fill('M8')
   await header.press('Escape')
   await expect(page.getByLabel('G-code preview')).toContainText('M8')
+  await header.fill('M8\nG20')
+  await expect(header).toHaveAttribute('aria-invalid', 'true')
+  await header.press('Escape')
+  await expect(header).toHaveValue('M8') // the rejected edit isn't kept
   const rough = async () => {
     await page.getByRole('button', { name: 'Export', exact: true }).click()
     const button = page.getByRole('button', { name: 'Download rough G-code' })
@@ -265,6 +300,7 @@ test('adds a custom G-code header and replaces the standard lines', async ({ pag
 
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
   await page.getByRole('checkbox', { name: 'Replace the standard header and footer' }).check()
+  await expect(page.getByText("Custom G-code header doesn't start the spindle (M3/M4).")).toBeVisible()
   const replaced = await rough()
   expect(replaced).toContain('M8')
   expect(replaced.some((l) => l.startsWith('M3'))).toBe(false)

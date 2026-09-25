@@ -197,7 +197,7 @@ function gcode(v: unknown): Project['gcode'] {
   const o = obj(v, 'gcode')
   const block = (key: string) => {
     const t = str(o, key, 'gcode')
-    const error = gcodeBlockError(t)
+    const error = gcodeBlockError(t, key === 'header')
     return error ? fail(`gcode.${key} ${error}`) : t
   }
   return { header: block('header'), footer: block('footer'), replaceDefaults: bool(o, 'replaceDefaults', 'gcode') }

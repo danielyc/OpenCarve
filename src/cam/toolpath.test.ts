@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { glyphPolylines } from '../lib/fonts'
 import { shapeToPolylines, tabPositions } from '../lib/geometry'
 import { findBit, findMaterial, recommendedSettings } from '../lib/library'
-import { defaultCut, newProject, type CompoundShape, type Point, type Project, type RectShape, type Shape } from '../model'
+import { defaultCut, gcodeHeaderWarnings, newProject, type CompoundShape, type Point, type Project, type RectShape, type Shape } from '../model'
 import { toGcode } from './gcode'
 import { orient, outlinePaths, placeTabs, planProject, pocketRings, shapeRegion, withTabs, zLevels, type Op, type Pt3 } from './toolpath'
 
@@ -302,23 +302,37 @@ describe('custom G-code blocks', () => {
     const q = p({ header: '\n  M8\nG54  \n', footer: 'M9\r\nG0 X0 Y0' })
     const safe = `G0 Z${q.cutSettings.rough.safeZ}`
     const c = code(q)
-    expect(c.slice(0, 6)).toEqual(['G21 G90 G17 G94', 'M8', 'G54', safe, 'M3 S18000', 'G4 P3'])
+    // The standard setup line is repeated after a header, in case it changed a mode.
+    expect(c.slice(0, 7)).toEqual(['G21 G90 G17 G94', 'M8', 'G54', 'G21 G90 G17 G94', safe, 'M3 S18000', 'G4 P3'])
     expect(c.slice(-6)).toEqual([safe, 'M9', 'G0 X0 Y0', 'M5', 'M2', ''])
-    expect(code(p({}))).toEqual(c.filter((l) => !['M8', 'G54', 'M9', 'G0 X0 Y0'].includes(l)))
+    const plain = code(p({}))
+    expect(plain.slice(0, 4)).toEqual(['G21 G90 G17 G94', safe, 'M3 S18000', 'G4 P3'])
+    expect(c.slice(7, -5)).toEqual(plain.slice(4, -3)) // the same moves
   })
   it('replace mode emits only the comments, the user blocks and the moves', () => {
-    const q = p({ header: 'G20 G90\nM3 S9000', footer: 'M5\nM30', replaceDefaults: true })
+    const q = p({ header: 'G21 G90\nM3 S9000', footer: 'M5\nM30', replaceDefaults: true })
     const all = lines(q)
     const c = code(q)
     const safe = `G0 Z${q.cutSettings.rough.safeZ}`
     expect(all[0]).toBe('; OpenCarve')
     expect(all.filter((l) => l.startsWith(';'))).toHaveLength(7)
-    expect(c.slice(0, 3)).toEqual(['G20 G90', 'M3 S9000', safe])
+    expect(c.slice(0, 3)).toEqual(['G21 G90', 'M3 S9000', safe])
     expect(c.slice(-4)).toEqual([safe, 'M5', 'M30', ''])
     for (const l of ['G21 G90 G17 G94', 'M3 S18000', 'G4 P3', 'M2']) expect(c).not.toContain(l)
     const moves = (x: string[]) => x.filter((l) => /^G[01] /.test(l))
     expect(moves(c)).toEqual(moves(code(p({}))))
     expect(code(p({ replaceDefaults: true })).slice(0, 1)).toEqual([safe])
+  })
+  it('warns when a replacing header misses the spindle start or G21 G90', () => {
+    const spindle = "Custom G-code header doesn't start the spindle (M3/M4)"
+    const units = "Custom G-code header doesn't set G21 G90"
+    const w = (header: string, replaceDefaults = true) => gcodeHeaderWarnings({ header, footer: '', replaceDefaults })
+    expect(w('', false)).toEqual([])
+    expect(w('')).toEqual([spindle, units])
+    expect(w('G21 G90\nM3 S9000')).toEqual([])
+    expect(w('g21g90 m04 s9000')).toEqual([])
+    expect(w('G21 (G90) ; M3\nM30')).toEqual([spindle, units])
+    expect(w('G90 M3')).toEqual([units])
   })
 })
 

@@ -28,6 +28,9 @@ interface View {
   materials: Record<'surface' | 'sides' | 'hidden' | 'lines' | 'linesDim' | 'cutter' | 'shank', THREE.Material>
   radius: number // of the stock's bounding sphere, for framing
   bar: number // px of canvas covered by the playback bar
+  // The user moved the camera since the last frame(). Until then every resize re-frames, so a frame() made while the
+  // preview was hidden or mid-transition (a tiny canvas) is redone at the real size; after that resizes keep their view.
+  moved: boolean
 }
 
 const PLAYBACK_H = 64 // --playback-h in styles.css
@@ -46,6 +49,8 @@ function project(view: View) {
 }
 
 // Looks at the stock centre from VIEW_DIR, far enough back that its bounding sphere fits the view.
+let framing = false // set while frame() moves the camera, so its 'change' event isn't taken for the user's
+
 function frame(view: View) {
   const { T, camera, controls } = view
   project(view)
@@ -53,7 +58,10 @@ function frame(view: View) {
   const fov = Math.min(vfov, 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect))
   const dir = new T.Vector3(...VIEW_DIR).normalize()
   camera.position.copy(controls.target).addScaledVector(dir, (view.radius / Math.sin(fov / 2)) * 1.05)
+  framing = true
   controls.update()
+  framing = false
+  view.moved = false
 }
 
 function surfaceGeometry(T: typeof THREE, mesh: SurfaceMesh) {
@@ -147,9 +155,15 @@ async function createView(host: HTMLElement): Promise<View> {
     cutter: new T.MeshStandardMaterial({ color: 0x0ea5e9, transparent: true, opacity: 0.55, depthWrite: false, roughness: 0.4 }),
     shank: new T.MeshStandardMaterial({ color: 0x9ca3af, transparent: true, opacity: 0.8, metalness: 0.5, roughness: 0.4 }),
   }
-  const render = () => renderer.render(scene, camera)
-  controls.addEventListener('change', render)
-  return { T, renderer, scene, camera, controls, render, materials, radius: 0, bar: 0 }
+  const view: View = { T, renderer, scene, camera, controls, render: () => {}, materials, radius: 0, bar: 0, moved: false }
+  // data-view-distance (camera distance / stock radius) lets tests check the framing.
+  view.render = () => {
+    renderer.render(scene, camera)
+    canvas.dataset.viewDistance = (camera.position.distanceTo(controls.target) / (view.radius || 1)).toFixed(3)
+  }
+  controls.addEventListener('change', view.render)
+  controls.addEventListener('change', () => (view.moved ||= !framing)) // drags, the wheel and arrow-key panning
+  return view
 }
 
 export default function Preview3D() {
@@ -240,16 +254,12 @@ export default function Preview3D() {
           return
         }
         const { renderer, scene, controls, materials } = v
-        // A hidden preview (0×0 on the Settings step) is left alone. Until the user moves the camera, every resize
-        // re-frames the stock (the preview may be created hidden, then grows in through a width transition);
-        // after that a resize keeps their view.
-        let moved = false
-        controls.addEventListener('start', () => (moved = true))
+        // A hidden preview (0×0 on the Settings step) is left alone; see View.moved for when a resize re-frames.
         const resize = () => {
           const { clientWidth: w, clientHeight: h } = host
           if (!w || !h) return
           renderer.setSize(w, h, false)
-          if (moved) project(v)
+          if (v.moved) project(v)
           else frame(v)
           v.render()
         }

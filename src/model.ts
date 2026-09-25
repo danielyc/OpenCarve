@@ -180,9 +180,31 @@ export interface GcodeBlocks {
 
 export const MAX_GCODE_BLOCK = 20_000
 
-// Printable ASCII and line breaks only, so the file is plain for any controller.
-export const gcodeBlockError = (text: string) =>
-  text.length > MAX_GCODE_BLOCK ? `must be at most ${MAX_GCODE_BLOCK} characters` : /[^\x20-\x7e\r\n]/.test(text) ? 'may only contain printable ASCII characters and line breaks' : null
+// G-code without its comments: `(...)` and everything after `;`.
+const gcodeWords = (text: string) => text.replace(/\([^)\n]*\)?/g, ' ').replace(/;.*/g, ' ')
+// True if the code has this word, e.g. hasWord(code, 'G', '21') matches G21, g021 and G21.1 but not G210 or XG21.
+const hasWord = (code: string, letter: string, num: string) => new RegExp(`(?<![a-z])${letter}\\s*0*${num}(?:\\.\\d+)?(?!\\d)`, 'i').test(code)
+
+// Printable ASCII, tabs and line breaks only, so the file is plain for any controller. The header may not switch to
+// inches (G20), incremental moves (G91) or inverse-time feeds (G93): OpenCarve's moves are absolute millimetres at
+// mm/min feeds. The footer may (parking moves).
+export function gcodeBlockError(text: string, header = false) {
+  if (text.length > MAX_GCODE_BLOCK) return `must be at most ${MAX_GCODE_BLOCK} characters`
+  if (/[^\x20-\x7e\t\r\n]/.test(text)) return 'may only contain printable ASCII characters, tabs and line breaks'
+  const code = gcodeWords(text)
+  if (header && ['20', '91', '93'].some((n) => hasWord(code, 'G', n))) return "can't switch to inches (G20), incremental moves (G91) or inverse-time feeds (G93); the toolpaths are absolute millimetres at mm/min"
+  return null
+}
+
+// With replaceDefaults the user's header must do what the standard lines did.
+export function gcodeHeaderWarnings(g: GcodeBlocks): string[] {
+  if (!g.replaceDefaults) return []
+  const code = gcodeWords(g.header)
+  return [
+    ...(hasWord(code, 'M', '3') || hasWord(code, 'M', '4') ? [] : ["Custom G-code header doesn't start the spindle (M3/M4)"]),
+    ...(hasWord(code, 'G', '21') && hasWord(code, 'G', '90') ? [] : ["Custom G-code header doesn't set G21 G90"]),
+  ]
+}
 
 export const isOpen = (s: Shape) => (s.type === 'path' ? !s.closed : s.type === 'compound' && s.paths.some((p) => !p.closed))
 
