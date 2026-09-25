@@ -14,15 +14,16 @@ const flattenText = (p: Project): Project => ({
   shapes: p.shapes.map((s) => (s.type === 'text' ? ({ ...s, type: 'compound', paths: localPolylines(s) } as Shape) : s)),
 })
 
+const failed = (error?: string): CamResult => ({ ops: [], warnings: [`Toolpath error: ${error}`], timeSec: { rough: 0, detail: 0 } })
+
 function plan(project: Project) {
   if (!worker) {
     worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })
     worker.onmessage = (e: MessageEvent<{ id: number; result?: CamResult; error?: string }>) => {
       const { id, result, error } = e.data
-      if (id !== latest) return
-      const cam = result ?? { ops: [], warnings: [`Toolpath error: ${error}`], timeSec: { rough: 0, detail: 0 }, version: id }
-      useAppStore.setState({ cam, camBusy: false })
+      if (id === latest) useAppStore.setState({ cam: result ?? failed(error), camBusy: false })
     }
+    worker.onerror = (e) => useAppStore.setState({ cam: failed(e.message || 'worker failed'), camBusy: false })
   }
   worker.postMessage({ id: ++latest, project: flattenText(project) })
 }

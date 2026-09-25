@@ -1,10 +1,13 @@
-import type { PathD, PathsD } from 'clipper2-ts'
+import { pointInPolygonD, PointInPolygonResult, type PathD, type PathsD } from 'clipper2-ts'
+import { readFileSync } from 'node:fs'
+import { parse } from 'opentype.js'
 import { describe, expect, it } from 'vitest'
-import { tabPositions } from '../lib/geometry'
+import { glyphPolylines } from '../lib/fonts'
+import { shapeToPolylines, tabPositions } from '../lib/geometry'
 import { findBit, findMaterial, recommendedSettings } from '../lib/library'
 import { defaultCut, newProject, type CompoundShape, type Point, type Project, type RectShape, type Shape } from '../model'
 import { toGcode } from './gcode'
-import { orient, outlinePaths, planProject, pocketRings, shapeRegion, withTabs, zLevels, type Pt3 } from './toolpath'
+import { orient, outlinePaths, placeTabs, planProject, pocketRings, shapeRegion, withTabs, zLevels, type Pt3 } from './toolpath'
 
 const area = (p: PathD) => p.reduce((a, q, i) => { const n = p[(i + 1) % p.length]; return a + q.x * n.y - n.x * q.y }, 0) / 2
 const bounds = (paths: PathsD) => {
@@ -79,21 +82,85 @@ describe('passes and tabs', () => {
       expect(len).toBeCloseTo(6, 3)
     }
   })
-  it('tab centres match tabPositions', () => {
-    const ring: Point[] = [[0, 0], [40, 0], [40, 20], [0, 20], [0, 0]]
-    const path = withTabs(ring, -12, -9, 4, 4)
+  it.each([
+    ['100×60 rect', rect(100, 60)],
+    ['rotated ellipse', { ...rect(80, 40), type: 'ellipse', rotation: 30 } as Shape],
+  ])('tabs sit where the canvas draws them: %s', (_, shape) => {
+    const p = project([{ ...shape, cut: { ...defaultCut(12), tabCount: 5 } }])
+    const final12 = planProject(p).ops[0].segments.filter((s) => s.points.length > 2).at(-1)!.points
     const mids: Point[] = []
-    path.forEach((q, i) => {
-      if (q[2] === -9 && path[i - 1][2] !== -9) {
-        const end = path.findIndex((r, j) => j > i && r[2] !== -9) - 1
-        mids.push([(q[0] + path[end][0]) / 2, (q[1] + path[end][1]) / 2])
+    final12.forEach((q, i) => {
+      if (q[2] !== -9 || final12[i - 1]?.[2] === -9) return
+      const end = final12.findIndex((r, j) => j > i && r[2] !== -9) - 1
+      mids.push([(q[0] + final12[end][0]) / 2, (q[1] + final12[end][1]) / 2])
+    })
+    const expected = tabPositions(shapeToPolylines(shape), 5).map((t) => t.point)
+    expect(mids).toHaveLength(5)
+    for (const e of expected) expect(Math.min(...mids.map((m) => Math.hypot(m[0] - e[0], m[1] - e[1])))).toBeLessThan(3)
+  })
+  it('the plunge point is never on a tab', () => {
+    const { pts, centres } = placeTabs(
+      [[0, 0], [40, 0], [40, 20], [0, 20], [0, 0]],
+      [[1, 0], [39, 20]],
+    )
+    const path = withTabs(pts, -12, -9, centres, 4)
+    expect(path[0][2]).toBe(-12)
+    expect(path.at(-1)![2]).toBe(-12)
+    expect(path.filter((q) => q[2] === -9).length).toBeGreaterThanOrEqual(4)
+  })
+})
+
+// Samples every XY feed move at depth: all of it must stay at least r inside the pocket.
+function assertInsideWall(shape: Shape, bit: string) {
+  const p = project([{ ...shape, cut: { ...defaultCut(12), type: 'pocket', depth: 3 } }], bit)
+  const r = findBit(bit).diameter / 2
+  const edges = shapeRegion(shape).flatMap((path) => path.map((a, i) => [a, path[(i + 1) % path.length]]))
+  const region = shapeRegion(shape)
+  const dist = (x: number, y: number) =>
+    Math.min(...edges.map(([a, b]) => {
+      const dx = b.x - a.x, dy = b.y - a.y
+      const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy)))
+      return Math.hypot(x - a.x - t * dx, y - a.y - t * dy)
+    }))
+  const insideRegion = (x: number, y: number) => region.reduce((w, path) => w + (pointInPolygonD({ x, y }, path) === PointInPolygonResult.IsInside ? Math.sign(area(path)) : 0), 0) > 0
+  let prev: Pt3 | null = null
+  let checked = 0
+  for (const seg of planProject(p).ops[0].segments) {
+    for (const q of seg.points) {
+      if (prev && !seg.rapid && q[2] < 0 && (q[0] !== prev[0] || q[1] !== prev[1])) {
+        for (let k = 0; k <= 10; k++) {
+          const x = prev[0] + ((q[0] - prev[0]) * k) / 10
+          const y = prev[1] + ((q[1] - prev[1]) * k) / 10
+          expect(insideRegion(x, y)).toBe(true)
+          expect(dist(x, y)).toBeGreaterThan(r - 0.02) // arc tolerance
+          checked++
+        }
       }
-    })
-    const expected = tabPositions([{ points: ring.slice(0, -1), closed: true }], 4).map((t) => t.point)
-    mids.forEach((m, i) => {
-      expect(m[0]).toBeCloseTo(expected[i][0])
-      expect(m[1]).toBeCloseTo(expected[i][1])
-    })
+      prev = q
+    }
+  }
+  expect(checked).toBeGreaterThan(100)
+}
+
+describe('pocket linking', () => {
+  it('never feeds across a narrow bridge between offset loops', () => {
+    // Two 20 mm squares joined by a 2 mm bridge: the 1/8" bit's loops split and must be linked by a retract.
+    const pts: Point[] = [[0, 0], [20, 0], [20, 9], [30, 9], [30, 0], [50, 0], [50, 20], [30, 20], [30, 11], [20, 11], [20, 20], [0, 20]]
+    for (const rotation of [0, 37, 90, 180]) {
+      assertInsideWall({ id: 'd', type: 'path', name: 'D', x: 100, y: 100, rotation, closed: true, points: pts.map(([x, y]) => [x - 25, y - 10]) }, '1/8-endmill')
+    }
+  })
+  it('never feeds across a hole', () => {
+    const sq = (s: number, cx = 0): Point[] => [[cx - s, -s], [cx + s, -s], [cx + s, s], [cx - s, s]]
+    const shape: CompoundShape = { id: 'c', type: 'compound', name: 'C', x: 100, y: 100, rotation: 15, paths: [{ closed: true, points: sq(20) }, { closed: true, points: sq(4, -8).reverse() }, { closed: true, points: sq(3, 9).reverse() }] }
+    assertInsideWall(shape, '1/8-endmill')
+    assertInsideWall(shape, '1/4-endmill')
+  })
+  it('never gouges "B8e" in Roboto', () => {
+    const buf = readFileSync(new URL('../../public/fonts/Roboto-Regular.ttf', import.meta.url))
+    const font = parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength))
+    const paths = glyphPolylines(font, 'B8e', 40)
+    assertInsideWall({ id: 't', type: 'compound', name: 'T', x: 100, y: 100, rotation: 0, paths }, '1/8-endmill')
   })
 })
 
@@ -122,6 +189,12 @@ describe('detail', () => {
     // Only near the corners: every cut point is within a few mm of a corner (25, 25) or (75, 75) etc.
     for (const [x, y] of pts) expect(Math.min(Math.abs(x - 25), Math.abs(x - 75)) + Math.min(Math.abs(y - 25), Math.abs(y - 75))).toBeLessThan(8)
   })
+  it('warns when the rough bit leaves more than corners and there is no usable detail bit', () => {
+    const slot = { ...rect(40, 2.5), cut: { ...defaultCut(12), type: 'pocket' as const, depth: 3 } }
+    expect(planProject(project([slot])).warnings).toContain("The rough bit can't reach all of Rect; add a smaller detail bit")
+    expect(planProject(project([pocket])).warnings).toEqual([])
+    expect(planProject(project([pocket], '1mm-endmill', '6mm-endmill')).warnings).toContain('The detail bit must be smaller than the rough bit')
+  })
   it('no detail bit, no detail op', () => {
     expect(planProject(project([pocket])).ops.map((o) => o.kind)).toEqual(['pocket'])
   })
@@ -133,13 +206,17 @@ describe('plan and gcode', () => {
       { ...rect(100, 50), id: 'a', name: 'Outline', x: 70, y: 60, cut: defaultCut(12) },
       { ...rect(40, 30), id: 'b', name: 'Pocket', x: 200, y: 100, cut: { ...defaultCut(12), type: 'pocket', depth: 3 } },
     ])
-  it('through cut with tabs plus pocket', () => {
+  it('through cut with tabs plus pocket; outside outlines go last', () => {
     const r = planProject(sample())
     expect(r.warnings).toEqual([])
-    expect(r.ops.map((o) => [o.role, o.kind])).toEqual([
-      ['rough', 'outline'],
-      ['rough', 'pocket'],
+    expect(r.ops.map((o) => [o.role, o.kind, o.shapeId])).toEqual([
+      ['rough', 'pocket', 'b'],
+      ['rough', 'outline', 'a'],
     ])
+    const inside = { ...rect(20, 20), id: 'c', x: 150, y: 150, cut: { ...defaultCut(12), side: 'inside' as const } }
+    const p = sample()
+    p.shapes = [p.shapes[0], inside, p.shapes[1]]
+    expect(planProject(p).ops.map((o) => o.shapeId)).toEqual(['c', 'b', 'a'])
     expect(r.timeSec.rough).toBeGreaterThan(0)
   })
   it('warns about nothing to carve, v-carve and out-of-stock shapes', () => {
@@ -147,13 +224,17 @@ describe('plan and gcode', () => {
     const w = planProject(project([{ ...rect(10, 10), x: -2, cut: { ...defaultCut(12), type: 'vcarve' } }, { ...rect(10, 10), id: 'z', x: -2, cut: defaultCut(12) }])).warnings
     expect(w).toEqual(['V-carve is not generated yet', 'Rect is partly outside the stock'])
   })
+  it('keeps comments ASCII', () => {
+    const p = { ...sample(), name: 'Café\n(test)' }
+    expect(toGcode(planProject(p), 'rough', p).split('\n').slice(0, 5).join('\n')).toMatch(/^[ -~\n]*$/)
+  })
   it('emits GRBL G-code', () => {
     const p = sample()
     const g = toGcode(planProject(p), 'rough', p)
     const lines = g.trim().split('\n')
-    expect(lines).toContain('G21 G90 G17')
-    expect(lines.findIndex((l) => l.startsWith('G'))).toBe(lines.indexOf('G21 G90 G17'))
-    expect(g).toContain('M3 S18000')
+    expect(lines).toContain('G21 G90 G17 G94')
+    expect(lines.findIndex((l) => !l.startsWith(';'))).toBe(lines.indexOf('G21 G90 G17 G94'))
+    expect(g).toContain('M3 S18000\nG4 P3')
     expect(lines.slice(-2)).toEqual(['M5', 'M2'])
     const g1 = lines.filter((l) => l.startsWith('G1'))
     for (const l of g1) {
@@ -163,7 +244,7 @@ describe('plan and gcode', () => {
     const s = p.cutSettings.rough
     const withF = g1.filter((l) => l.includes(' F'))
     expect(withF[0]).toMatch(new RegExp(`^G1 Z-?[\\d.]+ F${s.plunge}$`))
-    expect(withF[1]).toMatch(new RegExp(`^G1 X.* F${s.feed}$`))
+    expect(withF[1]).toMatch(new RegExp(`^G1 [XY].* F${s.feed}$`))
     // F only appears when the feed changes.
     let feed = 0
     for (const l of g1) {

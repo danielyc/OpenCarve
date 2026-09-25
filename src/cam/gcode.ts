@@ -3,6 +3,7 @@ import type { BitRole, CutSettings, Project } from '../model'
 import type { CamResult, Op, Pt3, Segment } from './toolpath'
 
 const RAPID_FEED = 2500 // mm/min, for the time estimate
+const SPINUP_SEC = 3
 const fmt = (n: number) => String(+n.toFixed(3))
 
 function walk(ops: Op[], start: Pt3, fn: (seg: Segment, from: Pt3, to: Pt3) => void) {
@@ -18,7 +19,7 @@ const feedFor = (seg: Segment, a: Pt3, b: Pt3, s: CutSettings) =>
   seg.rapid ? RAPID_FEED : seg.plunge || (a[0] === b[0] && a[1] === b[1] && b[2] < a[2]) ? s.plunge : s.feed
 
 export function opsTime(ops: Op[], s: CutSettings): number {
-  let sec = 0
+  let sec = ops.length ? SPINUP_SEC : 0
   walk(ops, [0, 0, s.safeZ], (seg, a, b) => {
     sec += (Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) / feedFor(seg, a, b, s)) * 60
   })
@@ -27,16 +28,17 @@ export function opsTime(ops: Op[], s: CutSettings): number {
 
 export function toGcode(result: CamResult, role: BitRole, project: Project): string {
   const s = project.cutSettings[role]!
-  const oneLine = (t: string) => t.replace(/[\r\n]+/g, ' ')
+  const comment = (t: string) => `; ${t.replace(/[^ -~]+/g, ' ')}`
   const lines = [
-    '; OpenCarve',
-    `; Project: ${oneLine(project.name)}`,
-    `; Bit: ${findBit(project.bits[role]!).name}`,
-    `; Material: ${findMaterial(project.materialId).name}`,
-    '; Units: mm',
-    'G21 G90 G17',
+    comment('OpenCarve'),
+    comment(`Project: ${project.name}`),
+    comment(`Bit: ${findBit(project.bits[role]!).name}`),
+    comment(`Material: ${findMaterial(project.materialId).name}`),
+    comment('Units: mm'),
+    'G21 G90 G17 G94',
     `G0 Z${fmt(s.safeZ)}`,
     `M3 S${s.rpm}`,
+    `G4 P${SPINUP_SEC}`,
   ]
   let feed = 0
   let z = s.safeZ

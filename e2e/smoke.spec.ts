@@ -94,7 +94,7 @@ test('exports G-code for a rectangle', async ({ page }) => {
   await page.mouse.up()
 
   await page.getByRole('button', { name: 'Export', exact: true }).click()
-  const button = page.getByRole('button', { name: 'Download G-code' })
+  const button = page.getByRole('button', { name: 'Download rough G-code' })
   await expect(button).toBeEnabled()
   const [download] = await Promise.all([page.waitForEvent('download'), button.click()])
   expect(download.suggestedFilename()).toMatch(/^Untitled-.*\.nc$/)

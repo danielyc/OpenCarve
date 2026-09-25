@@ -95,6 +95,8 @@ export interface CutSettings {
 
 export type BitRole = 'rough' | 'detail'
 
+export const MAX_STEPOVER = 0.5 // beyond this, successive pocket rings can leave a nub between them
+
 // `side` (outline only) is relative to the shape's filled region: holes come from nesting/winding (fillRule),
 // so "outside" cuts outside the outer contours and inside the holes, not outside every contour.
 // Tabs are placed per contour (tabPositions on each polyline); tabHeight is measured up from the stock bottom.
@@ -115,8 +117,8 @@ export interface Project {
   units: Units
   stock: { w: number; h: number; thickness: number }
   materialId: string
-  // Rough bit cuts everything it fits in. The detail bit, when set, finishes what the rough bit
-  // can't reach in pockets/outlines. A V-carve uses whichever role holds a V-bit (detail preferred).
+  // Rough bit cuts everything it fits in. The detail bit, when set, only rest-machines pockets (what the rough bit
+  // can't reach); outlines use the rough bit. A V-carve uses whichever role holds a V-bit (detail preferred).
   bits: { rough: string; detail?: string }
   cutSettings: { rough: CutSettings; detail?: CutSettings } // detail present iff bits.detail
   cutSettingsCustom: Record<BitRole, boolean> // false = follow recommendedSettings

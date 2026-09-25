@@ -7,14 +7,16 @@ import {
   FillRule,
   inflatePathsD,
   JoinType,
+  pointInPolygonD,
+  PointInPolygonResult,
   PolyTreeD,
   type PathD,
   type PathsD,
   type PolyPathD,
 } from 'clipper2-ts'
-import { polylineBounds, shapeToPolylines } from '../lib/geometry'
+import { polylineBounds, shapeToPolylines, tabPositions } from '../lib/geometry'
 import { findBit } from '../lib/library'
-import { tabsActive, type BitRole, type Cut, type CutSettings, type Point, type Project, type Shape } from '../model'
+import { MAX_STEPOVER, tabsActive, type BitRole, type Cut, type CutSettings, type Point, type Project, type Shape } from '../model'
 import { opsTime } from './gcode'
 
 export type Pt3 = [number, number, number]
@@ -34,7 +36,6 @@ export interface CamResult {
   ops: Op[]
   warnings: string[]
   timeSec: Record<BitRole, number>
-  version: number
 }
 
 const PRECISION = 3 // decimals, 0.001 mm
@@ -75,7 +76,6 @@ function islands(region: PathsD): PathsD[] {
 export const outlinePaths = (region: PathsD, side: Cut['side'], r: number) => inflate(region, side === 'on' ? 0 : side === 'outside' ? r : -r)
 
 // Tool-centre rings, innermost first; the last one (offset -r) is the finishing wall.
-// ponytail: stepover above 50% can leave a nub inside the innermost ring; add a centre clean-up pass if that matters.
 export function pocketRings(region: PathsD, r: number, step: number): PathsD[] {
   const rings: PathsD[] = []
   for (let d = r; ; d += step) {
@@ -100,26 +100,64 @@ export function zLevels(depth: number, stepdown: number): number[] {
 
 const closedPts = (path: PathD): Point[] => [...path, path[0]].map((p): Point => [p.x, p.y])
 
-// Raises Z to tabZ over each tab. Centres are at arc length (k + 0.5) · L / count, the same spots tabPositions() draws.
-export function withTabs(pts: Point[], z: number, tabZ: number, count: number, width: number): Pt3[] {
+function arcLengths(pts: Point[]) {
   const cum = [0]
   for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]))
-  const total = cum.at(-1)!
-  const events: [number, number][] = []
-  for (let k = 0; k < count; k++) {
-    const s = ((k + 0.5) * total) / count
-    events.push([Math.max(0, s - width / 2), 1], [Math.min(total, s + width / 2), -1])
+  return cum
+}
+
+const lerpPt = (a: Point, b: Point, t: number): Point => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]
+
+// Distance from p to a polyline and the arc length of the closest point on it.
+function nearest(pts: Point[], cum: number[], [x, y]: Point) {
+  let best = { d: Infinity, s: 0 }
+  for (let i = 1; i < pts.length; i++) {
+    const [a, b] = [pts[i - 1], pts[i]]
+    const len = cum[i] - cum[i - 1]
+    const t = len ? Math.min(1, Math.max(0, ((x - a[0]) * (b[0] - a[0]) + (y - a[1]) * (b[1] - a[1])) / (len * len))) : 0
+    const [px, py] = lerpPt(a, b, t)
+    const d = Math.hypot(x - px, y - py)
+    if (d < best.d) best = { d, s: cum[i - 1] + t * len }
   }
-  events.sort((a, b) => a[0] - b[0] || a[1] - b[1])
+  return best
+}
+
+// Tabs go where the canvas draws them (tabPositions on the design outline), projected onto this loop.
+// The loop is restarted in the middle of the widest gap between tabs so the plunge never lands on one.
+export function placeTabs(pts: Point[], tabPoints: Point[]): { pts: Point[]; centres: number[] } {
+  if (!tabPoints.length) return { pts, centres: [] }
+  const cum = arcLengths(pts)
+  const total = cum.at(-1)!
+  const s = tabPoints.map((p) => nearest(pts, cum, p).s).sort((a, b) => a - b)
+  let s0 = 0
+  let gap = -1
+  s.forEach((a, i) => {
+    const b = i + 1 < s.length ? s[i + 1] : s[0] + total
+    if (b - a > gap) [gap, s0] = [b - a, (a + (b - a) / 2) % total]
+  })
+  const j = Math.max(1, cum.findIndex((c) => c > s0)) - 1
+  const p = lerpPt(pts[j], pts[j + 1], cum[j + 1] > cum[j] ? (s0 - cum[j]) / (cum[j + 1] - cum[j]) : 0)
+  return { pts: [p, ...pts.slice(j + 1, -1), ...pts.slice(0, j + 1), p], centres: s.map((a) => (a - s0 + total) % total) }
+}
+
+// Raises Z to tabZ over width around each centre (arc length along the closed loop pts).
+export function withTabs(pts: Point[], z: number, tabZ: number, centres: number[], width: number): Pt3[] {
+  const cum = arcLengths(pts)
+  const total = cum.at(-1)!
+  const events = centres
+    .flatMap((c): [number, number][] => [
+      [Math.max(0, c - width / 2), 1],
+      [Math.min(total, c + width / 2), -1],
+    ])
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1])
   let up = 0
   let i = 1
   const zNow = () => (up > 0 ? tabZ : z)
   const out: Pt3[] = [[...pts[0], z]]
   for (const [s, step] of events) {
-    for (; i < pts.length && cum[i] < s; i++) out.push([...pts[i], zNow()])
+    for (; i < pts.length - 1 && cum[i] < s; i++) out.push([...pts[i], zNow()])
     const seg = cum[i] - cum[i - 1]
-    const t = seg ? (s - cum[i - 1]) / seg : 0
-    const p: Point = [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t]
+    const p = lerpPt(pts[i - 1], pts[i], seg ? (s - cum[i - 1]) / seg : 0)
     out.push([...p, zNow()])
     up += step
     out.push([...p, zNow()])
@@ -127,6 +165,19 @@ export function withTabs(pts: Point[], z: number, tabZ: number, count: number, w
   for (; i < pts.length; i++) out.push([...pts[i], zNow()])
   return out
 }
+
+// A feed move at depth is safe if it stays inside the tool-centre region (the finishing wall).
+function inside([x, y]: Point, paths: PathsD) {
+  let w = 0
+  for (const path of paths) {
+    const r = pointInPolygonD({ x, y }, path, PRECISION)
+    const outer = areaD(path) > 0
+    if (r === PointInPolygonResult.IsInside || (r === PointInPolygonResult.IsOn && outer)) w += outer ? 1 : -1
+  }
+  return w > 0
+}
+
+const safeLink = (a: Point, b: Point, wall: PathsD) => !crosses(a, b, wall) && inside(lerpPt(a, b, 0.5), wall)
 
 // True if segment ab properly crosses any edge of paths (touching at a or b doesn't count).
 function crosses(a: Point, b: Point, paths: PathsD): boolean {
@@ -181,7 +232,7 @@ function linker(safeZ: number) {
 function pocketSegments(region: PathsD, r: number, s: CutSettings, depth: number) {
   const plan = islands(region)
     .map((island) => {
-      const rings = pocketRings(island, r, s.stepover * 2 * r)
+      const rings = pocketRings(island, r, Math.min(MAX_STEPOVER, s.stepover) * 2 * r)
       return { wall: rings.at(-1) ?? [], rings: rings.map((level) => level.map((p) => closedPts(orient(p, areaD(p) < 0, s.direction)))) }
     })
     .filter((isl) => isl.rings.length)
@@ -191,7 +242,7 @@ function pocketSegments(region: PathsD, r: number, s: CutSettings, depth: number
     for (const isl of plan) {
       for (const ring of isl.rings.flat()) {
         const c = L.cur
-        L.moveTo([...ring[0], z], prev === isl && !!c && !crosses([c[0], c[1]], ring[0], isl.wall))
+        L.moveTo([...ring[0], z], prev === isl && !!c && safeLink([c[0], c[1]], ring[0], isl.wall))
         L.cut(ring.slice(1).map((p): Pt3 => [...p, z]))
         prev = isl
       }
@@ -200,10 +251,11 @@ function pocketSegments(region: PathsD, r: number, s: CutSettings, depth: number
   return L.finish()
 }
 
-export function planProject(project: Project, version = 0): CamResult {
+export function planProject(project: Project): CamResult {
   const { stock, bits, cutSettings } = project
   const t = stock.thickness
   const ops: Op[] = []
+  const last: Op[] = [] // outside outlines, cut after everything else so parts aren't freed before their pockets
   const warnings: string[] = []
   const carved = project.shapes.filter((s) => s.cut)
   if (!carved.length) warnings.push('Nothing to carve')
@@ -211,6 +263,7 @@ export function planProject(project: Project, version = 0): CamResult {
   const r = findBit(bits.rough).diameter / 2
   const detailBit = bits.detail ? findBit(bits.detail) : null
   const ds = cutSettings.detail
+  const usableDetail = detailBit && ds && detailBit.type !== 'vbit' && detailBit.diameter < 2 * r
 
   for (const shape of carved) {
     const cut = shape.cut!
@@ -221,27 +274,41 @@ export function planProject(project: Project, version = 0): CamResult {
     if (cut.depth > t + 1e-9) warnings.push(`${shape.name} is deeper than the stock`)
     const depth = Math.min(cut.depth, t)
     const polys = shapeToPolylines(shape)
+    if (!polys.length) {
+      warnings.push(`Font still loading for ${shape.name}`)
+      continue
+    }
     const b = polylineBounds(polys)
     if (b.minX < 0 || b.minY < 0 || b.maxX > stock.w || b.maxY > stock.h) warnings.push(`${shape.name} is partly outside the stock`)
     const region = shapeRegion(shape)
     const tooLarge = `Bit too large for ${shape.name}`
-    const push = (role: BitRole, kind: Op['kind'], segments: Segment[]) => segments.length && ops.push({ role, shapeId: shape.id, kind, segments })
+    const push = (list: Op[], role: BitRole, kind: Op['kind'], segments: Segment[]) =>
+      segments.length && list.push({ role, shapeId: shape.id, kind, segments })
 
     if (cut.type === 'outline') {
       const paths = outlinePaths(region, cut.side, r)
-      if (cut.side === 'inside' && region.length && !paths.length) warnings.push(tooLarge)
       const inside = cut.side === 'inside'
+      if (inside && region.length && !paths.length) warnings.push(tooLarge)
+      else if (inside && paths.length < region.length) warnings.push(`Bit too large for parts of ${shape.name}`)
       const tabZ = tabsActive(cut, t) ? -(t - cut.tabHeight) : null
       const zs = zLevels(depth, rs.stepdown)
+      const loops = paths.map((path) => closedPts(orient(path, areaD(path) > 0 !== inside, rs.direction)))
+      const tabsFor = loops.map((): Point[] => [])
+      if (tabZ !== null && loops.length) {
+        for (const { point } of polys.filter((p) => p.closed).flatMap((p) => tabPositions([p], cut.tabCount))) {
+          const d = loops.map((l) => nearest(l, arcLengths(l), point).d)
+          tabsFor[d.indexOf(Math.min(...d))].push(point)
+        }
+      }
       const L = linker(rs.safeZ)
-      for (const path of paths) {
-        const pts = closedPts(orient(path, areaD(path) > 0 !== inside, rs.direction))
+      loops.forEach((loop, k) => {
+        const { pts, centres } = placeTabs(loop, tabsFor[k])
         zs.forEach((z, i) => {
-          const pass = tabZ !== null && z < tabZ ? withTabs(pts, z, tabZ, cut.tabCount, cut.tabWidth) : pts.map((p): Pt3 => [...p, z])
+          const pass = tabZ !== null && z < tabZ && centres.length ? withTabs(pts, z, tabZ, centres, cut.tabWidth) : pts.map((p): Pt3 => [...p, z])
           L.moveTo(pass[0], i > 0)
           L.cut(pass.slice(1))
         })
-      }
+      })
       // Open paths retract between passes: going back to the start at depth would cut through stock.
       for (const { points } of cut.side === 'on' ? polys.filter((p) => !p.closed) : []) {
         for (const z of zs) {
@@ -249,24 +316,29 @@ export function planProject(project: Project, version = 0): CamResult {
           L.cut(points.slice(1).map((p): Pt3 => [...p, z]))
         }
       }
-      push('rough', 'outline', L.finish())
+      push(cut.side === 'outside' ? last : ops, 'rough', 'outline', L.finish())
       continue
     }
 
     if (region.length && !inflate(region, -r).length) warnings.push(tooLarge)
-    push('rough', 'pocket', pocketSegments(region, r, rs, depth))
+    push(ops, 'rough', 'pocket', pocketSegments(region, r, rs, depth))
     // Rest machining: what the rough bit's radius couldn't reach, widened so the detail bit can get in, clipped to the pocket.
-    if (detailBit && ds && detailBit.type !== 'vbit' && detailBit.diameter < 2 * r) {
-      const open = (p: PathsD, d: number) => inflate(inflate(p, -d), d)
-      const rest = open(boolean(ClipType.Difference, region, open(region, r)), SLIVER)
+    const open = (p: PathsD, d: number) => inflate(inflate(p, -d), d)
+    const rest = open(boolean(ClipType.Difference, region, open(region, r)), SLIVER)
+    if (usableDetail) {
       const dr = detailBit.diameter / 2
-      if (rest.length) push('detail', 'pocket-detail', pocketSegments(boolean(ClipType.Intersection, region, inflate(rest, 2 * dr)), dr, ds, depth))
+      if (rest.length) push(ops, 'detail', 'pocket-detail', pocketSegments(boolean(ClipType.Intersection, region, inflate(rest, 2 * dr)), dr, ds, depth))
+    } else {
+      if (detailBit && detailBit.type !== 'vbit') warnings.push('The detail bit must be smaller than the rough bit')
+      // Round inside corners always leave a little rest (about 0.17 r deep); only warn about more than that.
+      if (inflate(rest, -0.25 * r).length) warnings.push(`The rough bit can't reach all of ${shape.name}; add a smaller detail bit`)
     }
   }
+  ops.push(...last)
 
   const time = (role: BitRole) => {
     const s = cutSettings[role]
     return s ? opsTime(ops.filter((o) => o.role === role), s) : 0
   }
-  return { ops, warnings: [...new Set(warnings)], timeSec: { rough: time('rough'), detail: time('detail') }, version }
+  return { ops, warnings: [...new Set(warnings)], timeSec: { rough: time('rough'), detail: time('detail') } }
 }

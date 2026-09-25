@@ -3,7 +3,7 @@ import { FONTS, loadFont } from './lib/fonts'
 import { fitText, localBounds, scaleShape } from './lib/geometry'
 import { BITS, findBit, findMaterial, MACHINES, MATERIALS } from './lib/library'
 import { formatLength, mmToIn, parseLength, type Units } from './lib/units'
-import { isOpen, tabsActive, type BitRole, type Cut, type Shape } from './model'
+import { isOpen, MAX_STEPOVER, tabsActive, type BitRole, type Cut, type Shape } from './model'
 import { useAppStore } from './store'
 
 // `live` commits on every keystroke; the whole focus session is a single undo entry.
@@ -233,7 +233,7 @@ export default function Inspector() {
             {rate('Feed', c.feed, (feed) => set({ feed }))}
             {rate('Plunge', c.plunge, (plunge) => set({ plunge }))}
             {length('Stepdown', c.stepdown, (stepdown) => set({ stepdown }))}
-            {count('Stepover %', Math.round(c.stepover * 100), (v) => set({ stepover: Math.min(100, v) / 100 }))}
+            {count('Stepover %', Math.round(c.stepover * 100), (v) => set({ stepover: Math.min(MAX_STEPOVER, v / 100) }))}
             {count('RPM', c.rpm, (rpm) => set({ rpm }))}
             {length('Safe Z', c.safeZ, (safeZ) => set({ safeZ }))}
             <label className="field wide">

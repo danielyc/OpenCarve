@@ -43,8 +43,9 @@ export default function ExportPanel() {
             </h3>
             <p>Estimated time {mmss(cam?.timeSec[role] ?? 0)}</p>
             <button disabled={busy || !hasOps} onClick={() => download(role, bit.name)}>
-              Download G-code
+              Download {role} G-code
             </button>
+            {!busy && cam && !hasOps && <p className="hint">No toolpaths for this bit</p>}
           </section>
         )
       })}
