@@ -5,7 +5,7 @@ import { BITS, differingFields, effectiveBit, findBit, findMaterial, MATERIALS, 
 // A self-contained, versioned document: the same JSON is the download format and the IndexedDB record,
 // so a sync backend can store it verbatim later.
 export const FILE_FORMAT = 'opencarve'
-// v2 added the work zero (origin). Older builds refuse v2 files rather than dropping the zero and cutting shifted.
+// Only the current version is read: the format is still changing and there is no compatibility promise yet.
 export const FILE_VERSION = 2
 
 export type EmbeddedFonts = Record<string, Omit<StoredFont, 'id'>>
@@ -251,7 +251,7 @@ export async function parseProjectFile(
 function projectFromData(data: unknown, warnings: string[]): Project {
   const file = obj(data, 'file')
   if (file.format !== FILE_FORMAT) fail('not an OpenCarve project')
-  if (file.version !== 1 && file.version !== FILE_VERSION) fail(`unsupported version ${String(file.version)} (this app reads versions 1 to ${FILE_VERSION})`)
+  if (file.version !== FILE_VERSION) fail(`unsupported version ${String(file.version)} (this app reads version ${FILE_VERSION})`)
   const p = obj(file.project, 'project')
   const d = newProject()
 

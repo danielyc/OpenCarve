@@ -41,7 +41,7 @@ Tested in Chromium (Chrome, Edge); should work in Firefox and Safari. Toolpaths 
 
 ## Project files
 
-A `.opencarve` file is JSON: `{ "format": "opencarve", "version": 2, "project": { ... } }`. All lengths are in millimetres, whatever the display units. Version 2 added the work zero (`project.origin`); version 1 files still open, with XY zero at the bottom-left corner and Z zero at the top. Builds before version 2 refuse version 2 files, so they never cut with the work zero dropped.
+A `.opencarve` file is JSON: `{ "format": "opencarve", "version": 2, "project": { ... } }`. All lengths are in millimetres, whatever the display units. The format is still changing during development: only the current version is read, and there is no backwards compatibility yet.
 
 ## Development
 

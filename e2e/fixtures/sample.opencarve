@@ -1,6 +1,6 @@
 {
   "format": "opencarve",
-  "version": 1,
+  "version": 2,
   "project": {
     "id": "sample",
     "name": "Sample sign",

@@ -32,8 +32,8 @@ test('work zero: round-trips, defaults for old files, validates and clamps', () 
   expect(parseProject(serializeProject(p))).toEqual(p)
   const old: Partial<Project> = sample()
   delete old.origin
-  expect(parseProject(file(old, { version: 1 })).origin).toEqual({ preset: 'bottom-left', x: 0, y: 0, z: 'top' })
   expect(parseProject(file(old)).origin).toEqual({ preset: 'bottom-left', x: 0, y: 0, z: 'top' })
+  expect(() => parseProject(file(old, { version: 1 }))).toThrow('unsupported version 1')
   // Presets are re-derived from the stock.
   expect(parseProject(file({ ...old, origin: { preset: 'center', x: 1, y: 2, z: 'top' } })).origin).toMatchObject({ x: 150, y: 100 })
   const warnings: string[] = []
@@ -52,7 +52,7 @@ test('work zero: round-trips, defaults for old files, validates and clamps', () 
 test('rejects garbage', () => {
   expect(() => parseProject('not json')).toThrow(/not JSON/)
   expect(() => parseProject('{"format":"svg"}')).toThrow(/not an OpenCarve project/)
-  expect(() => parseProject(file(sample(), { version: 3 }))).toThrow('Invalid project file: unsupported version 3 (this app reads versions 1 to 2)')
+  expect(() => parseProject(file(sample(), { version: 3 }))).toThrow('Invalid project file: unsupported version 3 (this app reads version 2)')
   expect(() => parseProject(file({ ...sample(), shapes: 'x' }))).toThrow(/shapes must be an array/)
   expect(() => parseProject(file({ ...sample(), stock: { w: NaN, h: 1, thickness: 1 } }))).toThrow(/stock.w/)
   expect(() => parseProject(file({ ...sample(), shapes: [{ id: 'z', type: 'blob', x: 0, y: 0 }] }))).toThrow(/shapes\[0\].type/)
