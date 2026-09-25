@@ -18,6 +18,7 @@ Free, open-source (AGPL-3.0) design and toolpath software for hobby CNC routers,
 - **Simulate**: toolpaths on the 2D canvas, a 3D preview of the carved result, warnings and an estimated time.
 - **Toolpath animation**: watch a model of the bit run the job in the 3D preview in G-code order, with play/pause, 1×–50× speed and a scrub bar, and optionally see the material removed as it goes.
 - **Export** G-code for GRBL-compatible machines, one file per bit.
+- **Custom G-code**: add your own lines before and after the toolpaths (coolant, a work offset, a parking move), or replace the standard setup and end lines entirely. The Settings step previews the start and end of the resulting file.
 - **Autosave** in the browser, a project list, and `.oc` files to save, share and back up projects.
 
 ## Not included (yet)
@@ -28,10 +29,11 @@ Free, open-source (AGPL-3.0) design and toolpath software for hobby CNC routers,
 
 ## Quick workflow
 
-1. **Design**: set the stock size and material with nothing selected, choose your bits, draw or import shapes, and give each one a cut (outline, pocket or V-carve) and depth.
-2. **Simulate**: check the toolpaths, the 3D preview and any warnings.
-3. **Export**: download the G-code file for each bit.
-4. **On the machine**: set XY and Z zero where the project's work zero says (Stock section, with nothing selected; the default is XY at the bottom-left corner and Z at the top of the stock). The Export step and the G-code header repeat it. For a two-bit carve, run the rough bit first, then change to the detail bit. After changing bits, re-zero Z only; don't move X or Y.
+1. **Settings** (where a new project opens): set the stock size and work zero, the machine, your bits, the material, the cut settings and any custom G-code.
+2. **Design**: draw or import shapes and give each one a cut (outline, pocket or V-carve) and depth. With nothing selected, the panel summarises the project settings, with a link back to Settings.
+3. **Simulate**: check the toolpaths, the 3D preview and any warnings.
+4. **Export**: download the G-code file for each bit.
+5. **On the machine**: set XY and Z zero where the project's work zero says (Settings → Stock; the default is XY at the bottom-left corner and Z at the top of the stock). The Export step and the G-code header repeat it. For a two-bit carve, run the rough bit first, then change to the detail bit. After changing bits, re-zero Z only; don't move X or Y.
 
 ## Safety
 

@@ -167,8 +167,22 @@ export interface Project {
   bitOverrides: Partial<Record<BitRole, BitOverride>> // only fields that differ from the library bit; see effectiveBit
   machine: { name: string; w: number; h: number; maxRpm: number }
   origin: Origin
+  gcode: GcodeBlocks
   shapes: Shape[]
 }
+
+// User G-code emitted before and after the toolpaths; replaceDefaults drops the standard setup and end lines.
+export interface GcodeBlocks {
+  header: string
+  footer: string
+  replaceDefaults: boolean
+}
+
+export const MAX_GCODE_BLOCK = 20_000
+
+// Printable ASCII and line breaks only, so the file is plain for any controller.
+export const gcodeBlockError = (text: string) =>
+  text.length > MAX_GCODE_BLOCK ? `must be at most ${MAX_GCODE_BLOCK} characters` : /[^\x20-\x7e\r\n]/.test(text) ? 'may only contain printable ASCII characters and line breaks' : null
 
 export const isOpen = (s: Shape) => (s.type === 'path' ? !s.closed : s.type === 'compound' && s.paths.some((p) => !p.closed))
 
@@ -214,5 +228,6 @@ export const newProject = (): Project => ({
   bitOverrides: {},
   machine: MACHINES[0],
   origin: { preset: 'bottom-left', x: 0, y: 0, z: 'top' },
+  gcode: { header: '', footer: '', replaceDefaults: false },
   shapes: [],
 })

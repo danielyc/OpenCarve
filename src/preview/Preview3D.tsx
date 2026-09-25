@@ -240,11 +240,17 @@ export default function Preview3D() {
           return
         }
         const { renderer, scene, controls, materials } = v
+        // A hidden preview (0×0 on the Settings step) is left alone. Until the user moves the camera, every resize
+        // re-frames the stock (the preview may be created hidden, then grows in through a width transition);
+        // after that a resize keeps their view.
+        let moved = false
+        controls.addEventListener('start', () => (moved = true))
         const resize = () => {
           const { clientWidth: w, clientHeight: h } = host
           if (!w || !h) return
           renderer.setSize(w, h, false)
-          project(v)
+          if (moved) project(v)
+          else frame(v)
           v.render()
         }
         resize()

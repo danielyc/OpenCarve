@@ -4,6 +4,7 @@ import { expect, test } from '@playwright/test'
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'New project' }).click()
+  await page.getByRole('button', { name: 'Design', exact: true }).click()
   await page.getByRole('button', { name: 'Text' }).click()
   const box = (await page.getByLabel('Design canvas').boundingBox())!
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)

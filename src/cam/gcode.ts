@@ -39,7 +39,11 @@ const PRESET_LABEL = { center: 'centre of stock', 'bottom-left': 'bottom-left co
 export const xyZeroLabel = ({ origin: o }: Project) => (o.preset === 'custom' ? `custom (${fmt(o.x)}, ${fmt(o.y)} mm from bottom-left)` : PRESET_LABEL[o.preset])
 export const zZeroLabel = ({ origin: o }: Project) => (o.z === 'top' ? 'top of stock' : 'bottom of stock (spoilboard)')
 
-export function toGcode(result: CamResult, role: BitRole, project: Project): string {
+const userLines = (block: string) => (block.trim() ? block.trim().split(/\r?\n/) : [])
+
+// Append mode: standard setup, the user's header, spindle start … final retract, the user's footer, spindle stop and end.
+// replaceDefaults: only the comments, the user's header, the moves and the user's footer; the user owns units and spindle.
+export function toGcode(result: Pick<CamResult, 'ops'>, role: BitRole, project: Project): string {
   const s = project.cutSettings[role]!
   // Toolpaths are in stock coordinates (Z zero at the top); shift them to the work zero.
   const { x: ox, y: oy, z: zero } = project.origin
@@ -54,11 +58,11 @@ export function toGcode(result: CamResult, role: BitRole, project: Project): str
     comment('Units: mm'),
     comment(`XY zero: ${xyZeroLabel(project)}`),
     comment(`Z zero: ${zZeroLabel(project)}`),
-    'G21 G90 G17 G94',
-    `G0 Z${fmt(s.safeZ + dz)}`,
-    `M3 S${s.rpm}`,
-    `G4 P${SPINUP_SEC}`,
   ]
+  const { header, footer, replaceDefaults: own } = project.gcode
+  if (!own) lines.push('G21 G90 G17 G94')
+  lines.push(...userLines(header), `G0 Z${fmt(s.safeZ + dz)}`)
+  if (!own) lines.push(`M3 S${s.rpm}`, `G4 P${SPINUP_SEC}`)
   let feed = 0
   let z = s.safeZ
   walk(
@@ -77,6 +81,8 @@ export function toGcode(result: CamResult, role: BitRole, project: Project): str
     },
   )
   if (z !== s.safeZ) lines.push(`G0 Z${fmt(s.safeZ + dz)}`)
-  lines.push('M5', 'M2', '')
+  lines.push(...userLines(footer))
+  if (!own) lines.push('M5', 'M2')
+  lines.push('')
   return lines.join('\n')
 }

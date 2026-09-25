@@ -48,12 +48,14 @@ test('a failed save shows as failed and retries with backoff until it succeeds',
 // Uses the autosave subscription started by the test above.
 test('a new project is stored at once; reopening it does not bump updatedAt', async () => {
   await createProject()
+  expect(useAppStore.getState().step).toBe('settings')
   const id = useAppStore.getState().project.id
   const entry = (await listProjects()).find((e) => e.id === id)!
   expect(entry).toBeDefined()
   useAppStore.getState().setScreen('home')
   await new Promise((r) => setTimeout(r, 5)) // a rewrite would get a later timestamp
   useAppStore.getState().loadProject((await readProject(id))!)
+  expect(useAppStore.getState().step).toBe('design')
   await flush()
   expect((await listProjects()).find((e) => e.id === id)!.updatedAt).toBe(entry.updatedAt)
 })

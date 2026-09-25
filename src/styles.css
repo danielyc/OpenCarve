@@ -48,6 +48,19 @@ button:disabled {
   grid-template: 48px 1fr / 64px 1fr 280px;
   grid-template-areas: 'top top top' 'tools work panel';
   height: 100dvh;
+  transition: grid-template-columns 150ms ease;
+}
+
+/* Settings: the panel takes over the 3D preview's share of the workspace (35% of it), so the canvas keeps its width.
+   The preview stays mounted (no WebGL context loss or re-simulation), just collapsed and hidden. */
+.app.step-settings {
+  grid-template-columns: 64px 1fr calc(280px + 0.35 * (100vw - 344px));
+}
+
+.app.step-settings .preview3d {
+  flex-basis: 0;
+  border-left-width: 0;
+  visibility: hidden;
 }
 
 .app.dropping {
@@ -348,6 +361,7 @@ button:disabled {
   flex: 0 0 35%;
   background: #eceef1;
   border-left: 1px solid var(--border);
+  transition: flex-basis 150ms ease;
 }
 
 .panel {
@@ -1355,4 +1369,48 @@ input.project-name {
   font-size: 11px;
   font-weight: 600;
   color: var(--muted);
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0 12px;
+  align-items: start;
+}
+
+.settings-grid > .section {
+  margin: 0 0 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.hint.field-error {
+  color: #c92a2a;
+}
+
+.field textarea.mono,
+.gcode-preview {
+  font: 12px/1.4 ui-monospace, monospace;
+}
+
+.gcode-preview {
+  margin: 6px 0 0;
+  padding: 8px;
+  max-height: 20em;
+  overflow: auto;
+  white-space: pre;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.section > .subhead {
+  margin: 14px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.section > .field + .hint {
+  margin-bottom: 12px;
 }

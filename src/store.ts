@@ -5,9 +5,9 @@ import { polylineBounds, shapeBounds, shapeToPolylines } from './lib/geometry'
 import { differingFields, effectiveBit, findBit, findMaterial, overrideError, recommendedSettings, vbitMaxDepth, vcarveBit } from './lib/library'
 import type { Units } from './lib/units'
 import type { SimResult } from './preview/sim'
-import { defaultCut, fitOrigin, LIMITS, newId, newProject, validCut, type BitOverride, type BitRole, type Cut, type CutSettings, type Origin, type Project, type Shape, type ShapePatch } from './model'
+import { defaultCut, fitOrigin, gcodeBlockError, LIMITS, newId, newProject, validCut, type BitOverride, type BitRole, type Cut, type CutSettings, type Origin, type Project, type Shape, type ShapePatch } from './model'
 
-export type Step = 'design' | 'simulate' | 'export'
+export type Step = 'settings' | 'design' | 'simulate' | 'export'
 export type Screen = 'home' | 'editor'
 export type Tool = 'select' | 'rect' | 'ellipse' | 'polygon' | 'pen' | 'text'
 export const TOOL_KEYS: Record<Tool, string> = { select: 'V', rect: 'R', ellipse: 'E', polygon: 'P', pen: 'N', text: 'T' }
@@ -50,7 +50,7 @@ interface AppState {
   setStep: (step: Step) => void
   setScreen: (screen: Screen) => void
   newProject: () => void
-  loadProject: (project: Project) => void
+  loadProject: (project: Project, step?: Step) => void // new projects open on Settings, saved ones on Design
   setProjectName: (name: string) => void
   addShape: (shape: Shape) => void
   addShapes: (shapes: Shape[]) => void
@@ -71,6 +71,7 @@ interface AppState {
   setCutSettings: (role: BitRole, patch: Partial<CutSettings>) => void
   resetCutSettings: (role: BitRole) => void
   setMachine: (machine: Project['machine']) => void
+  setGcode: (patch: Partial<Project['gcode']>) => void // invalid header/footer text is ignored
   setCut: (ids: string[], patch: Partial<Cut> | null) => void
   setUnits: (units: Units) => void
   setView: (patch: Partial<View>) => void
@@ -137,10 +138,10 @@ export const useAppStore = create<AppState>()((set, get) => {
     setAnim: (patch) => set((s) => ({ anim: { ...s.anim, ...patch } })),
     setStep: (step) => set({ step }),
     setScreen: (screen) => set({ screen }),
-    newProject: () => get().loadProject(newProject()),
+    newProject: () => get().loadProject(newProject(), 'settings'),
     // Opens a project in the editor with fresh history and editor state (the editor remounts per project id, refitting the view).
-    loadProject: (project) =>
-      set({ project, screen: 'editor', step: 'design', tool: 'select', selection: [], past: [], future: [], transientBase: null, cam: null, sim: null }),
+    loadProject: (project, step = 'design') =>
+      set({ project, screen: 'editor', step, tool: 'select', selection: [], past: [], future: [], transientBase: null, cam: null, sim: null }),
     setProjectName: (name) => setProject((p) => ({ ...p, name })),
 
     addShape: (shape) => get().addShapes([shape]),
@@ -284,6 +285,8 @@ export const useAppStore = create<AppState>()((set, get) => {
     resetCutSettings: (role) => setProject((p) => recommended({ ...p, cutSettingsCustom: { ...p.cutSettingsCustom, [role]: false } })),
     setMachine: (m) =>
       setProject((p) => recommended({ ...p, machine: { ...m, w: Math.max(LIMITS.travel, m.w), h: Math.max(LIMITS.travel, m.h), maxRpm: Math.max(LIMITS.maxRpm, m.maxRpm) } })),
+    setGcode: (patch) =>
+      setProject((p) => ([patch.header, patch.footer].some((t) => t !== undefined && gcodeBlockError(t)) ? p : { ...p, gcode: { ...p.gcode, ...patch } })),
     setCut: (ids, patch) =>
       setProject((p) => {
         const t = p.stock.thickness

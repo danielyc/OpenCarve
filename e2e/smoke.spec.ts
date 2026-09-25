@@ -1,16 +1,43 @@
 import { expect, test } from '@playwright/test'
 
 // Each test gets a fresh browser context (empty IndexedDB), so the app opens on the home screen.
+// A new project opens on Settings; most tests start drawing, so they move on to Design.
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'New project' }).click()
+  await expect(page.getByRole('button', { name: 'Settings', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: 'Design', exact: true }).click()
 })
 
 test('loads the app shell', async ({ page }) => {
   await expect(page).toHaveTitle('Untitled – OpenCarve')
-  for (const name of ['Design', 'Simulate', 'Export']) {
+  for (const name of ['Settings', 'Design', 'Simulate', 'Export']) {
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
   }
+})
+
+test('Settings hides the 3D preview and widens the panel', async ({ page }) => {
+  const panel = page.locator('.panel')
+  const preview = page.getByLabel('3D carve preview')
+  await expect(preview).toBeVisible()
+  const narrow = (await panel.boundingBox())!.width
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await expect(preview).toBeHidden()
+  await expect.poll(async () => (await panel.boundingBox())!.width).toBeGreaterThan(narrow + 200)
+  await expect(page.getByLabel('Design canvas')).toBeVisible()
+  await page.getByRole('button', { name: 'Design', exact: true }).click()
+  await expect(preview).toBeVisible()
+  await expect.poll(async () => (await panel.boundingBox())!.width).toBeCloseTo(narrow, 0)
+})
+
+test('Design with nothing selected summarises the project and links to Settings', async ({ page }) => {
+  const summary = page.getByRole('region', { name: 'Project settings' })
+  await expect(summary).toContainText('MDF')
+  await expect(summary).toContainText('300.00 × 200.00 × 12.00 mm')
+  await expect(summary).toContainText('bottom-left corner')
+  await summary.getByRole('button', { name: 'Edit in Settings' }).click()
+  await expect(page.getByRole('button', { name: 'Settings', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByLabel('Rough bit')).toBeVisible()
 })
 
 test('draws a rectangle and undoes it', async ({ page }) => {
@@ -130,7 +157,9 @@ test('exports G-code for a rectangle', async ({ page }) => {
 })
 
 test('exports a V-carve with a V-bit as the detail bit', async ({ page }) => {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
   await page.getByLabel('Detail bit').selectOption('90-vbit')
+  await page.getByRole('button', { name: 'Design', exact: true }).click()
   await page.getByRole('button', { name: 'Rectangle' }).click()
   const box = (await page.getByLabel('Design canvas').boundingBox())!
   await page.mouse.move(box.x + box.width / 2 - 50, box.y + box.height / 2 - 30)
@@ -187,6 +216,7 @@ test('badges the Simulate step when a shape is partly outside the stock', async 
 })
 
 test('overrides the rough bit diameter and resets it', async ({ page }) => {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
   const rough = page.getByRole('group', { name: 'Rough dimensions' })
   const diameter = rough.getByLabel('Diameter (mm)')
   const custom = rough.getByText('Custom', { exact: true })
@@ -207,4 +237,36 @@ test('overrides the rough bit diameter and resets it', async ({ page }) => {
   await expect(custom).toBeHidden()
   await expect(diameter).toHaveValue('3.175')
   await expect(page.getByLabel('Stepdown')).toHaveValue('1.60')
+})
+
+test('adds a custom G-code header and replaces the standard lines', async ({ page }) => {
+  await page.getByRole('button', { name: 'Rectangle' }).click()
+  const box = (await page.getByLabel('Design canvas').boundingBox())!
+  await page.mouse.move(box.x + box.width / 2 - 50, box.y + box.height / 2 - 30)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 + 50, box.y + box.height / 2 + 30, { steps: 4 })
+  await page.mouse.up()
+
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  const header = page.getByLabel('Before the toolpaths')
+  await header.fill('M8')
+  await header.press('Escape')
+  await expect(page.getByLabel('G-code preview')).toContainText('M8')
+  const rough = async () => {
+    await page.getByRole('button', { name: 'Export', exact: true }).click()
+    const button = page.getByRole('button', { name: 'Download rough G-code' })
+    await expect(button).toBeEnabled()
+    const [download] = await Promise.all([page.waitForEvent('download'), button.click()])
+    return Buffer.concat(await (await download.createReadStream()).toArray()).toString().split('\n')
+  }
+  const lines = await rough()
+  expect(lines.indexOf('M8')).toBeGreaterThan(lines.indexOf('G21 G90 G17 G94'))
+  expect(lines.indexOf('M8')).toBeLessThan(lines.findIndex((l) => l.startsWith('M3')))
+
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('checkbox', { name: 'Replace the standard header and footer' }).check()
+  const replaced = await rough()
+  expect(replaced).toContain('M8')
+  expect(replaced.some((l) => l.startsWith('M3'))).toBe(false)
+  expect(replaced).not.toContain('G21 G90 G17 G94')
 })

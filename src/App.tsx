@@ -7,10 +7,12 @@ import Inspector from './Inspector'
 import { importSvg } from './lib/svgImport'
 import Preview3D from './preview/Preview3D'
 import ProjectMenu from './ProjectMenu'
+import SettingsPanel from './SettingsPanel'
 import SimulatePanel from './SimulatePanel'
 import { TOOL_KEYS, useAppStore, type Step, type Tool } from './store'
 
 const STEPS: { id: Step; label: string }[] = [
+  { id: 'settings', label: 'Settings' },
   { id: 'design', label: 'Design' },
   { id: 'simulate', label: 'Simulate' },
   { id: 'export', label: 'Export' },
@@ -69,7 +71,7 @@ export default function App() {
 
   return (
     <div
-      className={dropping ? 'app dropping' : 'app'}
+      className={`app step-${step}${dropping ? ' dropping' : ''}`}
       onDragOver={(e) => {
         if (!e.dataTransfer.types.includes('Files')) return
         e.preventDefault()
@@ -141,7 +143,7 @@ export default function App() {
         <Preview3D />
       </main>
       <aside className="panel">
-        {step === 'export' ? <ExportPanel /> : step === 'simulate' ? <SimulatePanel /> : <Inspector />}
+        {step === 'export' ? <ExportPanel /> : step === 'simulate' ? <SimulatePanel /> : step === 'settings' ? <SettingsPanel /> : <Inspector />}
       </aside>
     </div>
   )

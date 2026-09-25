@@ -89,6 +89,11 @@
           "tabHeight": 3
         }
       }
-    ]
+    ],
+    "gcode": {
+      "header": "",
+      "footer": "",
+      "replaceDefaults": false
+    }
   }
 }

@@ -20,6 +20,7 @@ test('designs, simulates, exports and reopens a two-bit sign', async ({ page }) 
   await page.keyboard.press('Enter')
   await expect(page.getByRole('button', { name: 'Project name: Sign' })).toBeVisible()
   await expect(page).toHaveTitle('Sign – OpenCarve')
+  await page.getByRole('button', { name: 'Design', exact: true }).click()
 
   const box = (await page.getByLabel('Design canvas').boundingBox())!
   const cx = box.x + box.width / 2
@@ -55,7 +56,7 @@ test('designs, simulates, exports and reopens a two-bit sign', async ({ page }) 
   const tabs = page.getByRole('checkbox', { name: 'Tabs' })
   await tabs.check()
 
-  await page.mouse.click(box.x + 10, box.y + 10) // empty canvas: deselect to show the project settings
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
   await page.getByLabel('Detail bit').selectOption('60-vbit')
   await selectViaSimulate(page, 'Text')
   await page.getByRole('radio', { name: 'V-carve' }).click()
@@ -97,6 +98,7 @@ test('work zero at the centre shifts the readout, inspector and G-code', async (
   await page.getByRole('radio', { name: 'Centre' }).check()
   await expect(page.getByLabel('Zero X (from left)')).toHaveValue('150.00')
   await expect(page.getByLabel('Zero Y (from bottom)')).toHaveValue('100.00')
+  await page.getByRole('button', { name: 'Design', exact: true }).click()
 
   const box = (await page.getByLabel('Design canvas').boundingBox())!
   const [cx, cy] = [box.x + box.width / 2, box.y + box.height / 2]
@@ -130,6 +132,7 @@ test('plays and scrubs the toolpath animation', async ({ page }) => {
   test.setTimeout(60_000)
   await page.goto('/')
   await page.getByRole('button', { name: 'New project' }).click()
+  await page.getByRole('button', { name: 'Design', exact: true }).click()
   const box = (await page.getByLabel('Design canvas').boundingBox())!
   const [cx, cy] = [box.x + box.width / 2, box.y + box.height / 2]
   await page.getByRole('button', { name: 'Rectangle' }).click()

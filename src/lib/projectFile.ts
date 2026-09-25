@@ -1,4 +1,4 @@
-import { fitOrigin, LIMITS, MAX_STEPOVER, newId, newProject, validCut, type BitOverride, type BitRole, type Cut, type CutSettings, type Origin, type Point, type Polyline, type Project, type Shape } from '../model'
+import { fitOrigin, gcodeBlockError, LIMITS, MAX_STEPOVER, newId, newProject, validCut, type BitOverride, type BitRole, type Cut, type CutSettings, type Origin, type Point, type Polyline, type Project, type Shape } from '../model'
 import { FONTS, fontFamily, MAX_FONT_BYTES, type StoredFont } from './fonts'
 import { BITS, differingFields, findBit, findMaterial, MATERIALS, overrideError } from './library'
 
@@ -193,6 +193,16 @@ function origin(v: unknown, stock: Project['stock'], warnings: string[]): Origin
   return fit
 }
 
+function gcode(v: unknown): Project['gcode'] {
+  const o = obj(v, 'gcode')
+  const block = (key: string) => {
+    const t = str(o, key, 'gcode')
+    const error = gcodeBlockError(t)
+    return error ? fail(`gcode.${key} ${error}`) : t
+  }
+  return { header: block('header'), footer: block('footer'), replaceDefaults: bool(o, 'replaceDefaults', 'gcode') }
+}
+
 // Recoverable problems (unknown material or font) fall back to defaults and are reported through `warnings`.
 export function parseProject(text: string, warnings: string[] = []): Project {
   return projectFromData(parseJson(text), warnings)
@@ -289,6 +299,7 @@ function projectFromData(data: unknown, warnings: string[]): Project {
     bitOverrides,
     machine,
     origin: origin(p.origin, stock, warnings),
+    gcode: gcode(p.gcode),
     shapes,
   }
 }

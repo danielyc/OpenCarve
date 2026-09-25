@@ -242,6 +242,25 @@ test('loadProject replaces the project and clears history and selection', () => 
   expect(store().project.shapes).toEqual([])
 })
 
+test('new projects open on Settings, loaded ones on Design', () => {
+  store().setStep('export')
+  store().newProject()
+  expect(store().step).toBe('settings')
+  store().loadProject(newProject())
+  expect(store().step).toBe('design')
+})
+
+test('setGcode records history and ignores text a project file would refuse', () => {
+  store().setGcode({ header: 'M8' })
+  store().setGcode({ footer: 'M9 °' })
+  store().setGcode({ header: 'x'.repeat(20_001) })
+  expect(store().project.gcode).toEqual({ header: 'M8', footer: '', replaceDefaults: false })
+  store().setGcode({ replaceDefaults: true })
+  store().undo()
+  store().undo()
+  expect(store().project.gcode.header).toBe('')
+})
+
 test('overlapping transients become separate undo entries and a late commit only ends its own', () => {
   store().addShape(rect('a', 10, 10))
   const text = store().beginTransient() // e.g. a focused text field

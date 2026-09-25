@@ -291,6 +291,37 @@ describe('plan and gcode', () => {
   })
 })
 
+describe('custom G-code blocks', () => {
+  const p = (gcode: Partial<Project['gcode']>) => {
+    const q = project([{ ...rect(20, 10), id: 'p', x: 30, y: 20, cut: { ...defaultCut(12), type: 'pocket', depth: 3 } }])
+    return { ...q, gcode: { ...q.gcode, ...gcode } }
+  }
+  const lines = (q: Project) => toGcode(planProject(q), 'rough', q).split('\n')
+  const code = (q: Project) => lines(q).filter((l) => !l.startsWith(';'))
+  it('appends the header after the standard setup and the footer after the final retract', () => {
+    const q = p({ header: '\n  M8\nG54  \n', footer: 'M9\r\nG0 X0 Y0' })
+    const safe = `G0 Z${q.cutSettings.rough.safeZ}`
+    const c = code(q)
+    expect(c.slice(0, 6)).toEqual(['G21 G90 G17 G94', 'M8', 'G54', safe, 'M3 S18000', 'G4 P3'])
+    expect(c.slice(-6)).toEqual([safe, 'M9', 'G0 X0 Y0', 'M5', 'M2', ''])
+    expect(code(p({}))).toEqual(c.filter((l) => !['M8', 'G54', 'M9', 'G0 X0 Y0'].includes(l)))
+  })
+  it('replace mode emits only the comments, the user blocks and the moves', () => {
+    const q = p({ header: 'G20 G90\nM3 S9000', footer: 'M5\nM30', replaceDefaults: true })
+    const all = lines(q)
+    const c = code(q)
+    const safe = `G0 Z${q.cutSettings.rough.safeZ}`
+    expect(all[0]).toBe('; OpenCarve')
+    expect(all.filter((l) => l.startsWith(';'))).toHaveLength(7)
+    expect(c.slice(0, 3)).toEqual(['G20 G90', 'M3 S9000', safe])
+    expect(c.slice(-4)).toEqual([safe, 'M5', 'M30', ''])
+    for (const l of ['G21 G90 G17 G94', 'M3 S18000', 'G4 P3', 'M2']) expect(c).not.toContain(l)
+    const moves = (x: string[]) => x.filter((l) => /^G[01] /.test(l))
+    expect(moves(c)).toEqual(moves(code(p({}))))
+    expect(code(p({ replaceDefaults: true })).slice(0, 1)).toEqual([safe])
+  })
+})
+
 describe('work zero', () => {
   const small = (origin: Partial<Project['origin']>) => {
     const p = project([{ ...rect(20, 10), id: 'p', x: 30, y: 20, cut: { ...defaultCut(12), type: 'pocket', depth: 3 } }])

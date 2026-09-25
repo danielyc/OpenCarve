@@ -135,7 +135,7 @@ export async function goHome() {
 // New projects are stored right away so they show up in the project list even before the first edit.
 export async function createProject() {
   const p = newProject()
-  useAppStore.getState().loadProject(p)
+  useAppStore.getState().loadProject(p, 'settings')
   await write(p)
 }
 

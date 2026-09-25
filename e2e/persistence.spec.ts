@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 async function drawRect(page: Page) {
+  await page.getByRole('button', { name: 'Design', exact: true }).click()
   await page.getByRole('button', { name: 'Rectangle' }).click()
   const box = (await page.getByLabel('Design canvas').boundingBox())!
   await page.mouse.move(box.x + box.width / 2 - 50, box.y + box.height / 2 - 30)
@@ -26,6 +27,7 @@ test('autosaves, reopens after reload, and deletes from home', async ({ page }) 
 
   await page.reload()
   await expect(page.getByRole('button', { name: 'Project name: Test' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Design', exact: true })).toHaveAttribute('aria-pressed', 'true') // reopened projects start on Design
   await expect(page.locator('[data-id]')).toHaveCount(1)
 
   await page.getByRole('button', { name: 'Home' }).click()
@@ -57,6 +59,7 @@ test('opens a .oc file with text and plans its toolpaths', async ({ page }) => {
   await page.goto('/')
   await page.getByLabel('Open project file').setInputFiles('e2e/fixtures/sample.oc')
   await expect(page.getByRole('button', { name: 'Project name: Sample sign' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Design', exact: true })).toHaveAttribute('aria-pressed', 'true') // opened files start on Design
   await expect(page.locator('[data-id]')).toHaveCount(2)
   // The text's glyph outlines (several contours, not the placeholder box) render once its font loads lazily.
   await expect(page.locator('[data-id=label] path.hit')).toHaveAttribute('d', /(Z.*){3}/)

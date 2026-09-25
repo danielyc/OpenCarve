@@ -47,6 +47,9 @@ v1.1 steps 11–14 are done too.
 v1.2 step 15 is done.
 15. Work zero: XY zero at a stock corner, the centre or a custom offset, Z zero at the stock top or bottom; shown on the canvas, cursor readout, inspector X/Y and 3D preview (axis gizmo), applied to the G-code and stated in its header, the summary and the Export setup note. Presets follow stock resizes; a custom zero is clamped to the stock. Project files are format version 2; older versions are refused (no backwards compatibility during development).
 
+v1.2 step 16 is done.
+16. Settings step: Settings → Design → Simulate → Export; new projects open on Settings, reopened or opened files on Design. The project settings (Stock + Work zero, Machine, Bits, Material, cut settings, G-code) moved to a two-column Settings panel that takes over the 3D preview's area (the preview stays mounted, hidden); Design with nothing selected shows a summary with "Edit in Settings". Custom G-code blocks before/after the toolpaths (printable ASCII, ≤ 20 000 characters each), appended to the standard lines or replacing them, with a live preview of the rough file's first and last lines. `project.gcode` is required in project files (still version 2; files saved before this step are refused).
+
 ### Known limitations
 - Text has no ligatures or complex-script shaping.
 - SVG import ignores `<use>`, `<text>` and CSS styling.
@@ -62,6 +65,7 @@ v1.2 step 15 is done.
 - Through-cut holes don't show in the 3D preview mid-playback (only in the finished result).
 - Google Fonts are downloaded as the Latin subset only.
 - Removing an uploaded font only checks saved projects for use, not unsaved ones open in other tabs.
+- Custom G-code is emitted as typed: it isn't checked for valid commands, and with "Replace the standard header and footer" the user must provide units, spindle start/stop and program end.
 - V-carve details narrower than the V-bit's flat tip are skipped, with a warning.
 - A V-carve depth typed past the V-bit's max depth (or loaded from a file) is capped by the planner, with a warning.
 

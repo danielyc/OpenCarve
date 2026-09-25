@@ -12,6 +12,7 @@ const sample = (): Project => ({
   cutSettings: { ...newProject().cutSettings, detail: { ...newProject().cutSettings.rough, feed: 900 } },
   cutSettingsCustom: { rough: false, detail: true },
   bitOverrides: { rough: { diameter: 3 }, detail: { angle: 60, flat: 0.5 } },
+  gcode: { header: 'M8\n(coolant on)', footer: 'M9', replaceDefaults: true },
   shapes: [
     { id: 'a', type: 'rect', name: 'Rect', x: 10, y: 20, rotation: 15, w: 30, h: 40, cut: defaultCut(12) },
     { id: 'b', type: 'text', name: 'Text', x: 50, y: 50, rotation: 0, text: 'Hi\nthere', font: 'lora', size: 20, w: 18, h: 14, letterSpacing: -1.5, lineHeight: 0.9, align: 'right', arc: -120, mirror: true },
@@ -61,6 +62,7 @@ test('a missing field is rejected with its path', () => {
     'cutSettings', 'cutSettings.rough', 'cutSettings.detail', 'cutSettings.rough.feed', 'cutSettings.detail.direction',
     'cutSettingsCustom', 'cutSettingsCustom.rough', 'cutSettingsCustom.detail',
     'origin', 'origin.preset', 'origin.x', 'origin.y', 'origin.z',
+    'gcode', 'gcode.header', 'gcode.footer', 'gcode.replaceDefaults',
     ...['name', 'rotation'].map((k) => `shapes[0].${k}`), 'shapes[2].sides', 'shapes[3].closed', 'shapes[5].paths[0].closed',
     ...['font', 'letterSpacing', 'lineHeight', 'align', 'arc', 'mirror'].map((k) => `shapes[4].${k}`),
     ...['type', 'side', 'depth', 'tabs', 'tabCount', 'tabWidth', 'tabHeight'].map((k) => `shapes[1].cut.${k}`),
@@ -73,6 +75,16 @@ test('a missing field is rejected with its path', () => {
   expect(plain.shapes[0]).not.toHaveProperty('fillRule')
   // cutSettings.detail exists exactly when there is a detail bit.
   expect(() => parseProject(without(everyShape(), 'bits.detail'))).toThrow('Invalid project file: cutSettings.detail is present without a detail bit')
+})
+
+test('custom G-code: printable ASCII and line breaks only, at most 20 000 characters', () => {
+  const g = (patch: object) => file({ ...sample(), gcode: { ...sample().gcode, ...patch } })
+  expect(parseProject(g({ header: 'G54\r\nM8 ; ok ~', footer: 'x'.repeat(20_000) })).gcode.header).toBe('G54\r\nM8 ; ok ~')
+  for (const [key, bad] of [['header', 'M3 S1000 °'], ['footer', 'M5\tM2'], ['header', 'é'], ['footer', 'x'.repeat(20_001)]]) {
+    expect(() => parseProject(g({ [key]: bad }))).toThrow(`Invalid project file: gcode.${key} `)
+  }
+  expect(() => parseProject(g({ header: 3 }))).toThrow('gcode.header must be a string')
+  expect(() => parseProject(g({ replaceDefaults: 'yes' }))).toThrow('gcode.replaceDefaults must be true or false')
 })
 
 test('work zero: round-trips, validates and clamps', () => {
