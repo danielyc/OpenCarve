@@ -81,6 +81,16 @@ export default function Home() {
           ))}
         </ul>
       </main>
+      <footer className="home-foot">
+        OpenCarve · AGPL-3.0 ·{' '}
+        <a href="https://github.com/danielyc/OpenCarve" target="_blank" rel="noreferrer">
+          Source on GitHub
+        </a>{' '}
+        ·{' '}
+        <a href="THIRD-PARTY-NOTICES.txt" target="_blank" rel="noreferrer">
+          Third-party notices
+        </a>
+      </footer>
     </div>
   )
 }

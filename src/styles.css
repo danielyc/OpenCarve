@@ -1086,6 +1086,13 @@ input.project-name {
   padding: 32px 16px;
 }
 
+.home-foot {
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .home-main h2 {
   margin: 0 0 12px;
   font-size: 15px;

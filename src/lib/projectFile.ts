@@ -5,7 +5,7 @@ import { BITS, differingFields, findBit, findMaterial, MATERIALS, overrideError 
 // A self-contained, versioned document: the same JSON is the download format and the IndexedDB record,
 // so a sync backend can store it verbatim later.
 export const FILE_FORMAT = 'opencarve'
-// Only the current version is read: the format is still changing and there is no compatibility promise yet.
+// Version 2 is the first public format; older versions will get migrations here (see AGENTS.md).
 export const FILE_VERSION = 2
 
 export type EmbeddedFonts = Record<string, Omit<StoredFont, 'id'>>

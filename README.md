@@ -62,7 +62,7 @@ bun run test:e2e   # end-to-end tests (Playwright; run `bunx playwright install 
 
 The build uses relative paths, so `dist/` can be served from any path, for example `bunx serve dist`.
 
-GitHub Actions runs lint, build and all tests on pushes to `main` and on pull requests (`.github/workflows/ci.yml`). `.github/workflows/pages.yml` deploys `dist/` to GitHub Pages after CI passes on `main`; it starts working once the repository is on GitHub with Settings → Pages → Source set to "GitHub Actions".
+GitHub Actions runs lint, build and all tests on pushes to `main` and on pull requests (`.github/workflows/ci.yml`). `.github/workflows/pages.yml` deploys `dist/` to GitHub Pages after CI passes on `main`.
 
 ## Fonts
 
@@ -78,6 +78,17 @@ Each font's name in the picker is shown in that font, loaded only for the rows y
 
 Issues and pull requests are welcome. [AGENTS.md](AGENTS.md) describes the code layout, conventions and how to verify a change. Please run lint and the tests before opening a pull request.
 
+## Privacy
+
+OpenCarve makes no network requests on startup beyond its own static files. It only contacts other hosts for Google Fonts:
+
+- `api.fontsource.org`: the font index, only after you click "Browse Google Fonts".
+- `cdn.jsdelivr.net`: a font's TTF when you choose a Google font or open a project that uses one, and small woff2 previews while you browse the list with "Preview fonts" on.
+
+There are no analytics and no external scripts. Projects, fonts and settings stay in your browser (IndexedDB and localStorage).
+
 ## License
 
-[AGPL-3.0](LICENSE)
+Copyright © 2026 Netsec Nederland
+
+[AGPL-3.0](LICENSE). Third-party components and their licences are listed in [THIRD-PARTY-NOTICES.txt](public/THIRD-PARTY-NOTICES.txt).
