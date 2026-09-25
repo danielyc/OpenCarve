@@ -3,7 +3,7 @@
   --surface: #fff;
   --border: #e2e4e8;
   --text: #1d2128;
-  --muted: #6b7280;
+  --muted: #5b6270;
   --accent: #2563eb;
   --accent-soft: #e8efff;
   font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -30,7 +30,7 @@ button {
   display: grid;
   grid-template: 48px 1fr / 64px 1fr 280px;
   grid-template-areas: 'top top top' 'tools work panel';
-  height: 100vh;
+  height: 100dvh;
 }
 
 .topbar {
@@ -46,6 +46,7 @@ button {
 .brand {
   font-weight: 600;
   font-size: 14px;
+  margin: 0;
 }
 
 .steps {
@@ -85,7 +86,7 @@ button {
 .tools button {
   height: 44px;
   padding: 0;
-  font-size: 10px;
+  font-size: 11px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: none;

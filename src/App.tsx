@@ -15,7 +15,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <span className="brand">OpenCarve</span>
+        <h1 className="brand">OpenCarve</h1>
         <nav className="steps" aria-label="Workflow step">
           {STEPS.map((s) => (
             <button key={s.id} aria-pressed={step === s.id} onClick={() => setStep(s.id)}>
@@ -27,7 +27,7 @@ export default function App() {
       </header>
       <aside className="tools" aria-label="Tools">
         {TOOLS.map((t) => (
-          <button key={t} title={t}>
+          <button key={t}>
             {t}
           </button>
         ))}

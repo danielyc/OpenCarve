@@ -11,6 +11,8 @@ Requires [bun](https://bun.sh).
 ```sh
 bun install
 bun run dev        # start the dev server
+bun run build      # production build
+bun run lint       # eslint
 bun run test       # unit tests (Vitest)
 bun run test:e2e   # smoke test (Playwright; run `bunx playwright install chromium` once)
 ```
