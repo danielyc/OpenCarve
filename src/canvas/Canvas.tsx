@@ -4,7 +4,7 @@ import { icons } from '../icons'
 import { FONTS, loadFont } from '../lib/fonts'
 import { dominantScale, fitText, localBounds, polylineBounds, scaleShape, shapeBounds, shapeToPolylines, tabPositions, toLocal, toWorld, type Bounds } from '../lib/geometry'
 import { formatLength } from '../lib/units'
-import { newId, tabsActive, type Point, type Polyline, type Shape } from '../model'
+import { DEFAULT_TEXT_LAYOUT, newId, tabsActive, type Point, type Polyline, type Shape } from '../model'
 import { TOOL_KEYS, useAppStore, type Align, type Tool } from '../store'
 
 type Frame = { x: number; y: number; rotation: number; b: Bounds }
@@ -280,7 +280,7 @@ export default function Canvas() {
       const font = FONTS[0].id
       st.setTool('select')
       loadFont(font)
-        .then(() => st.addShape(fitText({ id: newId(), type: 'text', name: 'Text', text: 'Text', font, size: 20, w: 0, h: 0, x: p[0], y: p[1], rotation: 0 })))
+        .then(() => st.addShape(fitText({ id: newId(), type: 'text', name: 'Text', text: 'Text', font, size: 20, w: 0, h: 0, x: p[0], y: p[1], rotation: 0, ...DEFAULT_TEXT_LAYOUT })))
         .catch(console.error)
       return
     }

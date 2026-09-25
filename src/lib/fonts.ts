@@ -217,7 +217,7 @@ export function loadFont(id: string): Promise<Font> {
   return p
 }
 
-export type TextStyle = Pick<TextShape, 'letterSpacing' | 'lineHeight' | 'align' | 'arc' | 'mirror'>
+export type TextStyle = Partial<Pick<TextShape, 'letterSpacing' | 'lineHeight' | 'align' | 'arc' | 'mirror'>>
 
 // Glyphs are laid out one by one (advance + kerning) because opentype.js's shaping throws on some GSUB tables.
 // ponytail: no ligatures or complex-script shaping.

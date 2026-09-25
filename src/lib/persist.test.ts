@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, test, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { newProject, type TextShape } from '../model'
+import { DEFAULT_TEXT_LAYOUT, newProject, type TextShape } from '../model'
 import { useAppStore } from '../store'
 import { getUploadedFont, loadFont, storeUploadedFont, textGlyphs } from './fonts'
 import { createProject, deleteProject, downloadProject, flush, importFonts, listProjects, openFile, readProject, removeFont, saveProject, startAutosave } from './persist'
@@ -62,7 +62,7 @@ const fontBuf = (file: string) => {
   const b = readFileSync(`public/fonts/${file}`) // jsdom: import.meta.url is not a file URL
   return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer
 }
-const textIn = (font: string, id = 't'): TextShape => ({ id, type: 'text', name: 'T', x: 0, y: 0, rotation: 0, text: 'Hi', font, size: 10, w: 5, h: 7 })
+const textIn = (font: string, id = 't'): TextShape => ({ id, type: 'text', name: 'T', x: 0, y: 0, rotation: 0, text: 'Hi', font, size: 10, w: 5, h: 7, ...DEFAULT_TEXT_LAYOUT })
 const fontOf = (i = 0) => (useAppStore.getState().project.shapes[i] as TextShape).font
 
 test('removing an uploaded font is refused while another saved project uses it; afterwards undo shows it unavailable', async () => {

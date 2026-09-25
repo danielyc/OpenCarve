@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
-import { defaultCut, newProject, type Project } from '../model'
+import { DEFAULT_TEXT_LAYOUT, defaultCut, newProject, type Project } from '../model'
 import { parseProject, parseProjectFile, serializeProject } from './projectFile'
 
 const sample = (): Project => ({
@@ -21,18 +21,64 @@ const sample = (): Project => ({
 
 const file = (project: unknown, extra = {}) => JSON.stringify({ format: 'opencarve', version: 2, project, ...extra })
 
+// A fresh project with a detail bit and one carved shape of every type.
+const everyShape = (): Project => {
+  const p = newProject()
+  const cut = defaultCut(p.stock.thickness)
+  const base = { x: 10, y: 10, rotation: 0, cut }
+  return {
+    ...p,
+    bits: { rough: '1/8-endmill', detail: '90-vbit' },
+    cutSettings: { ...p.cutSettings, detail: p.cutSettings.rough },
+    shapes: [
+      { ...base, id: 'r', type: 'rect', name: 'Rect', w: 5, h: 5 },
+      { ...base, id: 'e', type: 'ellipse', name: 'Ellipse', w: 5, h: 5 },
+      { ...base, id: 'p', type: 'polygon', name: 'Polygon', w: 5, h: 5, sides: 6 },
+      { ...base, id: 'l', type: 'path', name: 'Path', closed: true, points: [[0, 0], [5, 0], [5, 5]] },
+      { ...base, id: 't', type: 'text', name: 'Text', text: 'A', font: 'roboto', size: 10, w: 5, h: 7, ...DEFAULT_TEXT_LAYOUT },
+      { ...base, id: 'c', type: 'compound', name: 'Logo', paths: [{ closed: true, points: [[0, 0], [5, 0], [5, 5]] }] },
+    ],
+  }
+}
+
 test('round-trips a project', () => {
-  const p = sample()
-  expect(parseProject(serializeProject(p))).toEqual(p)
+  for (const p of [sample(), everyShape()]) expect(parseProject(serializeProject(p))).toEqual(p)
 })
 
-test('work zero: round-trips, defaults for old files, validates and clamps', () => {
+// Deletes a field at a message-style path (e.g. shapes[4].font); top-level scalars are reported as project.<key>.
+const without = (p: Project, path: string) => {
+  const data = JSON.parse(serializeProject(p))
+  const keys = path.replace(/^project\./, '').split(/[.[\]]+/).filter(Boolean)
+  const parent = keys.slice(0, -1).reduce((o, k) => o[k], data.project)
+  delete parent[keys.at(-1)!]
+  return JSON.stringify(data)
+}
+
+test('a missing field is rejected with its path', () => {
+  const paths = [
+    'project.name', 'project.units', 'project.materialId', 'machine', 'bits', 'bitOverrides',
+    'cutSettings', 'cutSettings.rough', 'cutSettings.detail', 'cutSettings.rough.feed', 'cutSettings.detail.direction',
+    'cutSettingsCustom', 'cutSettingsCustom.rough', 'cutSettingsCustom.detail',
+    'origin', 'origin.preset', 'origin.x', 'origin.y', 'origin.z',
+    ...['name', 'rotation'].map((k) => `shapes[0].${k}`), 'shapes[2].sides', 'shapes[3].closed', 'shapes[5].paths[0].closed',
+    ...['font', 'letterSpacing', 'lineHeight', 'align', 'arc', 'mirror'].map((k) => `shapes[4].${k}`),
+    ...['type', 'side', 'depth', 'tabs', 'tabCount', 'tabWidth', 'tabHeight'].map((k) => `shapes[1].cut.${k}`),
+  ]
+  expect(() => parseProject(without(everyShape(), 'project.id'))).toThrow('Invalid project file: project.id is missing')
+  for (const path of paths) expect(() => parseProject(without(everyShape(), path)), path).toThrow(`Invalid project file: ${path} is missing`)
+  // cut and fillRule are optional by design: no cut means not carved, no fillRule means non-zero.
+  const plain = parseProject(without(everyShape(), 'shapes[0].cut'))
+  expect(plain.shapes[0]).not.toHaveProperty('cut')
+  expect(plain.shapes[0]).not.toHaveProperty('fillRule')
+  // cutSettings.detail exists exactly when there is a detail bit.
+  expect(() => parseProject(without(everyShape(), 'bits.detail'))).toThrow('Invalid project file: cutSettings.detail is present without a detail bit')
+})
+
+test('work zero: round-trips, validates and clamps', () => {
   const p = { ...sample(), origin: { preset: 'custom' as const, x: 12.5, y: 40, z: 'bottom' as const } }
   expect(JSON.parse(serializeProject(p)).version).toBe(2)
   expect(parseProject(serializeProject(p))).toEqual(p)
-  const old: Partial<Project> = sample()
-  delete old.origin
-  expect(parseProject(file(old)).origin).toEqual({ preset: 'bottom-left', x: 0, y: 0, z: 'top' })
+  const old = sample()
   expect(() => parseProject(file(old, { version: 1 }))).toThrow('unsupported version 1')
   // Presets are re-derived from the stock.
   expect(parseProject(file({ ...old, origin: { preset: 'center', x: 1, y: 2, z: 'top' } })).origin).toMatchObject({ x: 150, y: 100 })
@@ -44,8 +90,6 @@ test('work zero: round-trips, defaults for old files, validates and clamps', () 
   const full = { preset: 'custom', x: 1, y: 2, z: 'top' }
   expect(() => parseProject(file({ ...old, origin: { ...full, z: 'side' } }))).toThrow(/origin.z/)
   expect(() => parseProject(file({ ...old, origin: { ...full, x: null } }))).toThrow('Invalid project file: origin.x must be a number')
-  expect(() => parseProject(file({ ...old, origin: { ...full, preset: undefined } }))).toThrow(/origin.preset must be one of/)
-  expect(() => parseProject(file({ ...old, origin: { ...full, z: undefined } }))).toThrow(/origin.z must be one of/)
   expect(() => parseProject(file({ ...old, origin: null }))).toThrow(/origin must be an object/)
 })
 
@@ -56,25 +100,13 @@ test('rejects garbage', () => {
   expect(() => parseProject(file({ ...sample(), shapes: 'x' }))).toThrow(/shapes must be an array/)
   expect(() => parseProject(file({ ...sample(), stock: { w: NaN, h: 1, thickness: 1 } }))).toThrow(/stock.w/)
   expect(() => parseProject(file({ ...sample(), shapes: [{ id: 'z', type: 'blob', x: 0, y: 0 }] }))).toThrow(/shapes\[0\].type/)
-  expect(() => parseProject(file({ ...sample(), shapes: [{ id: 'z', type: 'rect', x: 0, y: 0, w: 1 }] }))).toThrow(/shapes\[0\].h/)
+  expect(() => parseProject(file({ ...sample(), shapes: [{ id: 'z', type: 'rect', name: 'R', x: 0, y: 0, rotation: 0, w: 1, h: -1 }] }))).toThrow(/shapes\[0\].h must be a number ≥ 0/)
 })
 
-test('fills defaults for missing optional fields and validates cuts', () => {
-  const p = parseProject(
-    file({
-      id: 'old',
-      stock: { w: 100, h: 80, thickness: 6 },
-      bits: { rough: '1/8-endmill' },
-      shapes: [{ id: 'a', type: 'rect', x: 0, y: 0, w: 5, h: 5, cut: { type: 'pocket', depth: 99 } }],
-    }),
-  )
-  expect(p.name).toBe('Untitled')
-  expect(p.units).toBe('mm')
-  expect(p.cutSettings.rough.feed).toBeGreaterThan(0)
-  expect(p.cutSettingsCustom).toEqual({ rough: false, detail: false })
-  expect(p.bitOverrides).toEqual({})
-  expect(p.machine.maxRpm).toBeGreaterThan(0)
-  expect(p.shapes[0]).toMatchObject({ name: 'rect', rotation: 0, cut: { type: 'pocket', depth: 6, tabs: true, tabCount: 4 } })
+test('validates cuts', () => {
+  const rect = { id: 'a', type: 'rect', name: 'R', x: 0, y: 0, rotation: 0, w: 5, h: 5, cut: { ...defaultCut(6), type: 'pocket', depth: 99, tabCount: 0 } }
+  const p = parseProject(file({ ...sample(), stock: { w: 100, h: 80, thickness: 6 }, shapes: [rect] }))
+  expect(p.shapes[0]).toMatchObject({ cut: { type: 'pocket', depth: 6, tabCount: 1 } })
 })
 
 test('rejects unknown bits and invalid cut settings', () => {
@@ -89,7 +121,7 @@ test('rejects unknown bits and invalid cut settings', () => {
 
 test('maps unknown material and font ids to defaults with warnings', () => {
   const warnings: string[] = []
-  const text = { id: 't', type: 'text', x: 0, y: 0, text: 'A', font: 'comic', size: 10, w: 5, h: 7 }
+  const text = { ...textIn('comic', 't') }
   const p = parseProject(file({ ...sample(), materialId: 'unobtainium', shapes: [text, { ...text, id: 'u' }] }), warnings)
   expect(p.materialId).toBe('mdf')
   expect(p.shapes.map((s) => s.type === 'text' && s.font)).toEqual(['roboto', 'roboto'])
@@ -97,7 +129,7 @@ test('maps unknown material and font ids to defaults with warnings', () => {
 })
 
 test('clamps polygon sides and renames duplicate shape ids', () => {
-  const poly = { id: 'p', type: 'polygon', x: 0, y: 0, w: 5, h: 5 }
+  const poly = { id: 'p', type: 'polygon', name: 'P', x: 0, y: 0, rotation: 0, w: 5, h: 5 }
   const p = parseProject(file({ ...sample(), shapes: [{ ...poly, sides: 1 }, { ...poly, sides: 500 }] }))
   expect(p.shapes.map((s) => s.type === 'polygon' && s.sides)).toEqual([3, 64])
   expect(p.shapes[0].id).toBe('p')
@@ -108,7 +140,7 @@ const robotoBuf = () => {
   const b = readFileSync(new URL('../../public/fonts/Roboto-Regular.ttf', import.meta.url))
   return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer
 }
-const textIn = (font: string, id = font) => ({ id, type: 'text' as const, name: 'T', x: 0, y: 0, rotation: 0, text: 'A', font, size: 10, w: 5, h: 7 })
+const textIn = (font: string, id = font) => ({ id, type: 'text' as const, name: 'T', x: 0, y: 0, rotation: 0, text: 'A', font, size: 10, w: 5, h: 7, ...DEFAULT_TEXT_LAYOUT })
 
 test('embeds only the uploaded fonts text shapes use, and round-trips them', async () => {
   const data = robotoBuf()
@@ -142,25 +174,16 @@ test('fontsource ids are kept; malformed ones fall back', () => {
   expect(warnings).toEqual([expect.stringMatching(/fs:\.\.\/x/)])
 })
 
-test('fills text layout defaults for old files and rejects out-of-range values', () => {
-  const text = { id: 't', type: 'text', x: 0, y: 0, text: 'A', font: 'roboto', size: 10, w: 5, h: 7 }
-  expect(parseProject(file({ ...sample(), shapes: [text] })).shapes[0]).toMatchObject({ letterSpacing: 0, lineHeight: 1.2, align: 'center', arc: 0, mirror: false })
-  for (const [key, bad] of [['lineHeight', 0.4], ['lineHeight', 3.5], ['arc', 400], ['arc', -361], ['align', 'justify'], ['mirror', 'yes']] as const) {
+test('rejects out-of-range text layout values', () => {
+  const text = textIn('roboto', 't')
+  expect(parseProject(file({ ...sample(), shapes: [{ ...text, letterSpacing: -5 }] })).shapes[0]).toMatchObject({ letterSpacing: -5 })
+  for (const [key, bad] of [['letterSpacing', -5.1], ['lineHeight', 0.4], ['lineHeight', 3.5], ['arc', 400], ['arc', -361], ['align', 'justify'], ['mirror', 'yes']] as const) {
     expect(() => parseProject(file({ ...sample(), shapes: [{ ...text, [key]: bad }] }))).toThrow(new RegExp(`shapes\\[0\\].${key}`))
   }
 })
 
-test('clamps letter spacing tighter than half the size, with a warning, and the result round-trips', () => {
-  const text = { id: 't', type: 'text', name: 'Sign', x: 0, y: 0, text: 'A', font: 'roboto', size: 10, w: 5, h: 7, letterSpacing: -10 }
-  const warnings: string[] = []
-  const p = parseProject(file({ ...sample(), shapes: [text] }), warnings)
-  expect(p.shapes[0]).toMatchObject({ letterSpacing: -5 })
-  expect(warnings).toEqual([expect.stringMatching(/Letter spacing of "Sign"/)])
-  expect(parseProject(serializeProject(p))).toEqual(p)
-})
-
 test('a text with a broken bounds cache (NaN saved as null) still opens, with an estimate', () => {
-  const text = { id: 't', type: 'text', x: 0, y: 0, text: 'Hi', font: 'roboto', size: 10, w: null, h: null, arc: 1e-320 }
+  const text = { ...textIn('roboto', 't'), text: 'Hi', w: null, h: null, arc: 1e-320 }
   const p = parseProject(file({ ...sample(), shapes: [text] }))
   expect(p.shapes[0]).toMatchObject({ w: 12, h: 10, arc: 1e-320 })
   expect(parseProject(serializeProject(p))).toEqual(p)
@@ -172,14 +195,12 @@ test('validates bit overrides, dropping bad ones with a warning', () => {
     file({
       ...sample(),
       bits: { rough: '1/8-endmill' },
-      cutSettings: undefined,
-      cutSettingsCustom: undefined,
+      cutSettings: { rough: newProject().cutSettings.rough },
       bitOverrides: { rough: { diameter: 6, bogus: 1 }, detail: { diameter: 2 }, laser: { diameter: 1 } },
     }),
     warnings,
   )
   expect(p.bitOverrides).toEqual({ rough: { diameter: 6 } })
-  expect(p.cutSettings.rough.stepdown).toBe(3) // recommended from the effective bit
   expect(warnings).toEqual(['Ignored the detail bit override: no detail bit.', 'Ignored the laser bit override: no laser bit.'])
   for (const bad of [{ diameter: 'x' }, { diameter: 60 }, { angle: 5 }, { flat: 20 }, { flat: null }, 3]) {
     const w: string[] = []

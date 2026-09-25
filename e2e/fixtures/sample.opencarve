@@ -5,9 +5,43 @@
     "id": "sample",
     "name": "Sample sign",
     "units": "mm",
-    "stock": { "w": 200, "h": 120, "thickness": 12 },
+    "stock": {
+      "w": 200,
+      "h": 120,
+      "thickness": 12
+    },
     "materialId": "mdf",
-    "bits": { "rough": "1/8-endmill" },
+    "bits": {
+      "rough": "1/8-endmill"
+    },
+    "cutSettings": {
+      "rough": {
+        "feed": 1500,
+        "plunge": 500,
+        "stepdown": 1.6,
+        "rpm": 18000,
+        "safeZ": 5,
+        "stepover": 0.4,
+        "direction": "conventional"
+      }
+    },
+    "cutSettingsCustom": {
+      "rough": false,
+      "detail": false
+    },
+    "bitOverrides": {},
+    "machine": {
+      "name": "Generic GRBL",
+      "w": 300,
+      "h": 300,
+      "maxRpm": 24000
+    },
+    "origin": {
+      "preset": "bottom-left",
+      "x": 0,
+      "y": 0,
+      "z": "top"
+    },
     "shapes": [
       {
         "id": "frame",
@@ -18,7 +52,15 @@
         "rotation": 0,
         "w": 180,
         "h": 100,
-        "cut": { "type": "outline", "side": "outside", "depth": 12, "tabs": true, "tabCount": 4, "tabWidth": 6, "tabHeight": 3 }
+        "cut": {
+          "type": "outline",
+          "side": "outside",
+          "depth": 12,
+          "tabs": true,
+          "tabCount": 4,
+          "tabWidth": 6,
+          "tabHeight": 3
+        }
       },
       {
         "id": "label",
@@ -32,7 +74,20 @@
         "size": 40,
         "w": 38,
         "h": 29,
-        "cut": { "type": "pocket", "side": "inside", "depth": 2, "tabs": false, "tabCount": 4, "tabWidth": 6, "tabHeight": 3 }
+        "letterSpacing": 0,
+        "lineHeight": 1.2,
+        "align": "center",
+        "arc": 0,
+        "mirror": false,
+        "cut": {
+          "type": "pocket",
+          "side": "inside",
+          "depth": 2,
+          "tabs": false,
+          "tabCount": 4,
+          "tabWidth": 6,
+          "tabHeight": 3
+        }
       }
     ]
   }

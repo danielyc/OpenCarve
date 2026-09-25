@@ -252,7 +252,7 @@ export const useAppStore = create<AppState>()((set, get) => {
           ...p,
           bits,
           // A different bit (or none) drops that role's override.
-          bitOverrides: Object.fromEntries(Object.entries(p.bitOverrides ?? {}).filter(([r]) => bits[r as BitRole] === p.bits[r as BitRole])),
+          bitOverrides: Object.fromEntries(Object.entries(p.bitOverrides).filter(([r]) => bits[r as BitRole] === p.bits[r as BitRole])),
           cutSettingsCustom: {
             rough: p.cutSettingsCustom.rough && bits.rough === p.bits.rough,
             detail: p.cutSettingsCustom.detail && bits.detail === p.bits.detail,
@@ -265,7 +265,7 @@ export const useAppStore = create<AppState>()((set, get) => {
         const id = p.bits[role]
         if (!id) return p
         const bit = findBit(id)
-        const merged: BitOverride = patch ? { ...p.bitOverrides?.[role], ...patch } : {}
+        const merged: BitOverride = patch ? { ...p.bitOverrides[role], ...patch } : {}
         if (overrideError(bit, merged)) return p
         const o = differingFields(bit, merged)
         const bitOverrides = { ...p.bitOverrides, [role]: o }

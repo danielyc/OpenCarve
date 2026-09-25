@@ -280,7 +280,7 @@ function BitOverrideFields({ role }: { role: BitRole }) {
   const bit = effectiveBit(project, role)
   const fmt = (mm: number) => (units === 'mm' ? String(+mm.toFixed(3)) : formatLength(mm, units))
   const commit = (key: keyof BitOverride, v: number | null) => {
-    const message = v === null ? 'Enter a number' : overrideError(lib, { ...project.bitOverrides?.[role], [key]: v })
+    const message = v === null ? 'Enter a number' : overrideError(lib, { ...project.bitOverrides[role], [key]: v })
     setError(message ? { key, message } : null)
     if (!message) useAppStore.getState().setBitOverride(role, { [key]: v! })
   }
@@ -310,7 +310,7 @@ function BitOverrideFields({ role }: { role: BitRole }) {
           {error.message}
         </p>
       )}
-      {project.bitOverrides?.[role] && (
+      {project.bitOverrides[role] && (
         <p className="note">
           <span className="badge" title={`library: ${libValues}`}>
             Custom
@@ -500,7 +500,7 @@ export default function Inspector() {
   const updateText = (patch: Partial<TextShape>) =>
     patch.text?.trim() !== '' && update((s) => (s.type === 'text' ? fitText({ ...s, ...patch }) : s))
   const textValue = (f: (s: TextShape) => string) => shared((s) => (s.type === 'text' ? f(s) : ''))
-  const bend = textValue((s) => String(s.arc ?? 0))
+  const bend = textValue((s) => String(s.arc))
 
   return (
     <>
@@ -542,17 +542,17 @@ export default function Inspector() {
               }
             />
             {lengthField('Size', (s) => (s.type === 'text' ? s.size : 0), (s, size) =>
-              s.type === 'text' ? fitText({ ...s, size, ...(s.letterSpacing && { letterSpacing: (s.letterSpacing * size) / s.size }) }) : s,
+              s.type === 'text' ? fitText({ ...s, size, letterSpacing: (s.letterSpacing * size) / s.size }) : s,
             true)}
             <h3 className="subhead">Layout</h3>
-            {lengthField('Letter spacing', (s) => (s.type === 'text' ? (s.letterSpacing ?? 0) : 0), (s, v) =>
+            {lengthField('Letter spacing', (s) => (s.type === 'text' ? s.letterSpacing : 0), (s, v) =>
               s.type === 'text' ? fitText({ ...s, letterSpacing: Math.max(-s.size / 2, v) }) : s,
             )}
             <Field
               live
               step={0.1}
               label="Line height ×"
-              value={textValue((s) => String(s.lineHeight ?? 1.2))}
+              value={textValue((s) => String(s.lineHeight))}
               onCommit={(t) => {
                 const v = parseFloat(t)
                 if (v >= 0.5 && v <= 3) updateText({ lineHeight: v })
@@ -563,7 +563,7 @@ export default function Inspector() {
               <div className="segmented" role="radiogroup" aria-label="Align">
                 {(['left', 'center', 'right'] as const).map((a) => (
                   <label key={a} title={`Align ${a}`}>
-                    <input type="radio" name="text-align" aria-label={`Align ${a}`} checked={textValue((s) => s.align ?? 'center') === a} onChange={() => updateText({ align: a })} />
+                    <input type="radio" name="text-align" aria-label={`Align ${a}`} checked={textValue((s) => s.align) === a} onChange={() => updateText({ align: a })} />
                     <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
                       <path d={ALIGN_ICONS[a]} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                     </svg>
@@ -574,9 +574,9 @@ export default function Inspector() {
             <label className="check">
               <input
                 type="checkbox"
-                checked={textValue((s) => String(!!s.mirror)) === 'true'}
+                checked={textValue((s) => String(s.mirror)) === 'true'}
                 ref={(el) => {
-                  if (el) el.indeterminate = textValue((s) => String(!!s.mirror)) === ''
+                  if (el) el.indeterminate = textValue((s) => String(s.mirror)) === ''
                 }}
                 onChange={(e) => updateText({ mirror: e.target.checked })}
               />

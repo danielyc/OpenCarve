@@ -49,11 +49,11 @@ export interface TextShape extends ShapeBase {
   size: number
   w: number
   h: number
-  letterSpacing?: number // mm between glyphs, default 0, >= -size/2
-  lineHeight?: number // × size, default 1.2, 0.5–3
-  align?: 'left' | 'center' | 'right' // default center
-  arc?: number // bend in degrees, default 0; positive arches up (centre below), negative down; -360..360
-  mirror?: boolean // horizontal flip, default false
+  letterSpacing: number // mm between glyphs, >= -size/2
+  lineHeight: number // × size, 0.5–3
+  align: 'left' | 'center' | 'right'
+  arc: number // bend in degrees; positive arches up (centre below), negative down; -360..360
+  mirror: boolean // horizontal flip
 }
 
 // Coordinates: shapes and toolpaths live in stock coordinates — XY from the stock's bottom-left corner, Y up; Z zero is
@@ -63,6 +63,14 @@ export interface TextShape extends ShapeBase {
 export interface CompoundShape extends ShapeBase {
   type: 'compound'
   paths: Polyline[]
+}
+
+export const DEFAULT_TEXT_LAYOUT: Pick<TextShape, 'letterSpacing' | 'lineHeight' | 'align' | 'arc' | 'mirror'> = {
+  letterSpacing: 0,
+  lineHeight: 1.2,
+  align: 'center',
+  arc: 0,
+  mirror: false,
 }
 
 export type Shape = RectShape | EllipseShape | PolygonShape | PathShape | TextShape | CompoundShape
@@ -153,7 +161,7 @@ export interface Project {
   bits: { rough: string; detail?: string }
   cutSettings: { rough: CutSettings; detail?: CutSettings } // detail present iff bits.detail
   cutSettingsCustom: Record<BitRole, boolean> // false = follow recommendedSettings
-  bitOverrides?: Partial<Record<BitRole, BitOverride>> // only fields that differ from the library bit; see effectiveBit
+  bitOverrides: Partial<Record<BitRole, BitOverride>> // only fields that differ from the library bit; see effectiveBit
   machine: { name: string; w: number; h: number; maxRpm: number }
   origin: Origin
   shapes: Shape[]

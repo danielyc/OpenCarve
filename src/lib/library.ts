@@ -45,7 +45,7 @@ export const bitGeometry = (b: Bit) =>
 // The library bit for a role with the project's override applied. Callers only ask for roles that have a bit.
 export function effectiveBit(p: Pick<Project, 'bits' | 'bitOverrides'>, role: BitRole): Bit {
   const bit = findBit(p.bits[role]!)
-  const o = p.bitOverrides?.[role]
+  const o = p.bitOverrides[role]
   if (!o || !Object.keys(o).length) return bit
   const b = { ...bit, ...o }
   return { ...b, name: `${bit.name} (custom ${bitGeometry(b)})` }

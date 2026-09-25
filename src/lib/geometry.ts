@@ -111,7 +111,7 @@ export function scaleShape(shape: Shape, sx: number, sy: number): Shape {
       return { ...shape, paths: shape.paths.map((p) => ({ ...p, points: scale(p.points) })) }
     case 'text': {
       const f = dominantScale(sx, sy)
-      return { ...shape, size: shape.size * f, w: shape.w * f, h: shape.h * f, ...(shape.letterSpacing && { letterSpacing: shape.letterSpacing * f }) }
+      return { ...shape, size: shape.size * f, w: shape.w * f, h: shape.h * f, letterSpacing: shape.letterSpacing * f }
     }
     default:
       return { ...shape, w: shape.w * Math.abs(sx), h: shape.h * Math.abs(sy) }

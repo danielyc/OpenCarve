@@ -1,6 +1,6 @@
-import { defaultCut, fitOrigin, MAX_STEPOVER, newId, newProject, validCut, type BitOverride, type BitRole, type Cut, type CutSettings, type Origin, type Point, type Polyline, type Project, type Shape } from '../model'
+import { fitOrigin, MAX_STEPOVER, newId, newProject, validCut, type BitOverride, type BitRole, type Cut, type CutSettings, type Origin, type Point, type Polyline, type Project, type Shape } from '../model'
 import { FONTS, fontFamily, MAX_FONT_BYTES, type StoredFont } from './fonts'
-import { BITS, differingFields, effectiveBit, findBit, findMaterial, MATERIALS, overrideError, recommendedSettings } from './library'
+import { BITS, differingFields, findBit, findMaterial, MATERIALS, overrideError } from './library'
 
 // A self-contained, versioned document: the same JSON is the download format and the IndexedDB record,
 // so a sync backend can store it verbatim later.
@@ -33,26 +33,28 @@ const fail = (what: string): never => {
   throw new Error(`Invalid project file: ${what}`)
 }
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
-const obj = (v: unknown, what: string): Obj => (isObj(v) ? v : fail(`${what} must be an object`))
+const obj = (v: unknown, what: string): Obj => (isObj(v) ? v : fail(v === undefined ? `${what} is missing` : `${what} must be an object`))
+// Every field the app writes is required: a missing one is reported by its path rather than guessed.
+const field = (o: Obj, key: string, what: string): unknown => (o[key] === undefined ? fail(`${what}.${key} is missing`) : o[key])
 
-function num(o: Obj, key: string, what: string, def?: number, min = -Infinity): number {
-  const v = o[key] ?? def
+function num(o: Obj, key: string, what: string, min = -Infinity): number {
+  const v = field(o, key, what)
   return typeof v === 'number' && Number.isFinite(v) && v >= min ? v : fail(`${what}.${key} must be a number${min > -Infinity ? ` ≥ ${min}` : ''}`)
 }
-function positive(o: Obj, key: string, what: string, def: number): number {
-  const v = num(o, key, what, def)
+function positive(o: Obj, key: string, what: string): number {
+  const v = num(o, key, what)
   return v > 0 ? v : fail(`${what}.${key} must be > 0`)
 }
-function str(o: Obj, key: string, what: string, def?: string): string {
-  const v = o[key] ?? def
+function str(o: Obj, key: string, what: string): string {
+  const v = field(o, key, what)
   return typeof v === 'string' ? v : fail(`${what}.${key} must be a string`)
 }
-function oneOf<T extends string>(o: Obj, key: string, what: string, options: readonly T[], def?: T): T {
-  const v = o[key] ?? def
+function oneOf<T extends string>(o: Obj, key: string, what: string, options: readonly T[]): T {
+  const v = field(o, key, what)
   return options.includes(v as T) ? (v as T) : fail(`${what}.${key} must be one of ${options.join(', ')}`)
 }
-const bool = (o: Obj, key: string, what: string, def?: boolean): boolean => {
-  const v = o[key] ?? def
+const bool = (o: Obj, key: string, what: string): boolean => {
+  const v = field(o, key, what)
   return typeof v === 'boolean' ? v : fail(`${what}.${key} must be true or false`)
 }
 
@@ -63,17 +65,16 @@ function points(v: unknown, what: string): Point[] {
   )
 }
 
-function cut(v: unknown, what: string, thickness: number): Cut {
+function cut(v: unknown, what: string): Cut {
   const o = obj(v, what)
-  const d = defaultCut(thickness)
   return {
-    type: oneOf(o, 'type', what, ['outline', 'pocket', 'vcarve'] as const, d.type),
-    side: oneOf(o, 'side', what, ['outside', 'inside', 'on'] as const, d.side),
-    depth: num(o, 'depth', what, d.depth),
-    tabs: bool(o, 'tabs', what, d.tabs),
-    tabCount: num(o, 'tabCount', what, d.tabCount),
-    tabWidth: num(o, 'tabWidth', what, d.tabWidth),
-    tabHeight: num(o, 'tabHeight', what, d.tabHeight),
+    type: oneOf(o, 'type', what, ['outline', 'pocket', 'vcarve'] as const),
+    side: oneOf(o, 'side', what, ['outside', 'inside', 'on'] as const),
+    depth: num(o, 'depth', what),
+    tabs: bool(o, 'tabs', what),
+    tabCount: num(o, 'tabCount', what),
+    tabWidth: num(o, 'tabWidth', what),
+    tabHeight: num(o, 'tabHeight', what),
   }
 }
 
@@ -83,13 +84,13 @@ function shape(v: unknown, i: number, thickness: number, warn: (msg: string) => 
   const type = oneOf(o, 'type', what, ['rect', 'ellipse', 'polygon', 'path', 'text', 'compound'] as const)
   const base = {
     id: str(o, 'id', what),
-    name: str(o, 'name', what, type),
+    name: str(o, 'name', what),
     x: num(o, 'x', what),
     y: num(o, 'y', what),
-    rotation: num(o, 'rotation', what, 0),
+    rotation: num(o, 'rotation', what),
     ...(o.fillRule === 'evenodd' && { fillRule: 'evenodd' as const }),
   }
-  const size = () => ({ w: num(o, 'w', what, undefined, 0), h: num(o, 'h', what, undefined, 0) })
+  const size = () => ({ w: num(o, 'w', what, 0), h: num(o, 'h', what, 0) })
   let s: Shape
   switch (type) {
     case 'rect':
@@ -97,29 +98,22 @@ function shape(v: unknown, i: number, thickness: number, warn: (msg: string) => 
       s = { ...base, type, ...size() }
       break
     case 'polygon':
-      s = { ...base, type, ...size(), sides: Math.min(64, Math.max(3, Math.round(num(o, 'sides', what, 6)))) }
+      s = { ...base, type, ...size(), sides: Math.min(64, Math.max(3, Math.round(num(o, 'sides', what)))) }
       break
     case 'path':
-      s = { ...base, type, points: points(o.points, `${what}.points`), closed: bool(o, 'closed', what, false) }
+      s = { ...base, type, points: points(o.points, `${what}.points`), closed: bool(o, 'closed', what) }
       break
     case 'text': {
-      let font = str(o, 'font', what, FONTS[0].id)
+      let font = str(o, 'font', what)
       // Fontsource fonts load on demand; uploaded fonts are checked by parseProjectFile.
       const known = font.startsWith('upload:') || /^fs:[a-z0-9-]+$/.test(font) || FONTS.some((f) => f.id === font)
       if (!known) {
         warn(`Unknown font "${font}", using ${FONTS[0].name}.`)
         font = FONTS[0].id
       }
-      const sz = num(o, 'size', what, undefined, 0)
-      // Older saves could shrink the size below twice a negative spacing; clamp rather than refuse the file.
-      const spacing = () => {
-        const v = num(o, 'letterSpacing', what, 0)
-        if (v >= -sz / 2) return v
-        warn(`Letter spacing of "${base.name}" was tighter than half its size; set to ${-sz / 2} mm.`)
-        return -sz / 2
-      }
-      const range = (key: string, def: number, min: number, max: number) => {
-        const v = num(o, key, what, def, min)
+      const sz = num(o, 'size', what, 0)
+      const range = (key: string, min: number, max: number) => {
+        const v = num(o, key, what, min)
         return v <= max ? v : fail(`${what}.${key} must be ≤ ${max}`)
       }
       // w/h are a cache of the glyph bounds; a missing or broken one (e.g. NaN saved as null) is estimated, not fatal.
@@ -136,11 +130,11 @@ function shape(v: unknown, i: number, thickness: number, warn: (msg: string) => 
         text,
         font,
         size: sz,
-        letterSpacing: spacing(),
-        lineHeight: range('lineHeight', 1.2, 0.5, 3),
-        align: oneOf(o, 'align', what, ['left', 'center', 'right'] as const, 'center'),
-        arc: range('arc', 0, -360, 360),
-        mirror: bool(o, 'mirror', what, false),
+        letterSpacing: num(o, 'letterSpacing', what, -sz / 2),
+        lineHeight: range('lineHeight', 0.5, 3),
+        align: oneOf(o, 'align', what, ['left', 'center', 'right'] as const),
+        arc: range('arc', -360, 360),
+        mirror: bool(o, 'mirror', what),
       }
       break
     }
@@ -148,32 +142,30 @@ function shape(v: unknown, i: number, thickness: number, warn: (msg: string) => 
       if (!Array.isArray(o.paths)) fail(`${what}.paths must be an array`)
       const paths = (o.paths as unknown[]).map((p, j): Polyline => {
         const po = obj(p, `${what}.paths[${j}]`)
-        return { points: points(po.points, `${what}.paths[${j}].points`), closed: bool(po, 'closed', `${what}.paths[${j}]`, true) }
+        return { points: points(po.points, `${what}.paths[${j}].points`), closed: bool(po, 'closed', `${what}.paths[${j}]`) }
       })
       s = { ...base, type, paths }
     }
   }
-  return o.cut === undefined ? s : { ...s, cut: validCut(s, cut(o.cut, `${what}.cut`, thickness), thickness) }
+  return o.cut === undefined ? s : { ...s, cut: validCut(s, cut(o.cut, `${what}.cut`), thickness) }
 }
 
-function settings(v: unknown, what: string, fallback: CutSettings): CutSettings {
-  if (v === undefined) return fallback
+function settings(v: unknown, what: string): CutSettings {
   const o = obj(v, what)
   return {
-    feed: positive(o, 'feed', what, fallback.feed),
-    plunge: positive(o, 'plunge', what, fallback.plunge),
-    stepdown: positive(o, 'stepdown', what, fallback.stepdown),
-    rpm: positive(o, 'rpm', what, fallback.rpm),
-    safeZ: num(o, 'safeZ', what, fallback.safeZ, 0.5),
-    stepover: Math.min(MAX_STEPOVER, positive(o, 'stepover', what, fallback.stepover)),
-    direction: oneOf(o, 'direction', what, ['climb', 'conventional'] as const, fallback.direction),
+    feed: positive(o, 'feed', what),
+    plunge: positive(o, 'plunge', what),
+    stepdown: positive(o, 'stepdown', what),
+    rpm: positive(o, 'rpm', what),
+    safeZ: num(o, 'safeZ', what, 0.5),
+    stepover: Math.min(MAX_STEPOVER, positive(o, 'stepover', what)),
+    direction: oneOf(o, 'direction', what, ['climb', 'conventional'] as const),
   }
 }
 
 // Overrides for unknown or empty roles, or with bad values, are dropped with a warning.
-function overrides(v: unknown, bits: Project['bits'], warnings: string[]): NonNullable<Project['bitOverrides']> {
-  if (v === undefined) return {}
-  const out: NonNullable<Project['bitOverrides']> = {}
+function overrides(v: unknown, bits: Project['bits'], warnings: string[]): Project['bitOverrides'] {
+  const out: Project['bitOverrides'] = {}
   for (const [role, ov] of Object.entries(obj(v, 'bitOverrides'))) {
     const id = role === 'rough' || role === 'detail' ? bits[role] : undefined
     const o: BitOverride = isObj(ov) ? Object.fromEntries(['diameter', 'angle', 'flat'].filter((k) => ov[k] !== undefined).map((k) => [k, ov[k]])) : {}
@@ -187,10 +179,8 @@ function overrides(v: unknown, bits: Project['bits'], warnings: string[]): NonNu
   return out
 }
 
-// Absent (older files) means the default zero; a supplied one must be complete, since a wrong zero cuts in the wrong place.
 // Presets follow the stock; a custom zero outside the stock is pulled back onto it with a warning.
-function origin(v: unknown, stock: Project['stock'], d: Origin, warnings: string[]): Origin {
-  if (v === undefined) return d
+function origin(v: unknown, stock: Project['stock'], warnings: string[]): Origin {
   const o = obj(v, 'origin')
   const raw: Origin = {
     preset: oneOf(o, 'preset', 'origin', ['bottom-left', 'bottom-right', 'top-left', 'top-right', 'center', 'custom'] as const),
@@ -253,25 +243,25 @@ function projectFromData(data: unknown, warnings: string[]): Project {
   if (file.format !== FILE_FORMAT) fail('not an OpenCarve project')
   if (file.version !== FILE_VERSION) fail(`unsupported version ${String(file.version)} (this app reads version ${FILE_VERSION})`)
   const p = obj(file.project, 'project')
-  const d = newProject()
+  const defaultMaterial = newProject().materialId
 
   const so = obj(p.stock, 'stock')
-  const stock = { w: num(so, 'w', 'stock', undefined, 1), h: num(so, 'h', 'stock', undefined, 1), thickness: num(so, 'thickness', 'stock', undefined, 0.2) }
-  let materialId = str(p, 'materialId', 'project', d.materialId)
+  const stock = { w: num(so, 'w', 'stock', 1), h: num(so, 'h', 'stock', 1), thickness: num(so, 'thickness', 'stock', 0.2) }
+  let materialId = str(p, 'materialId', 'project')
   if (!MATERIALS.some((m) => m.id === materialId)) {
-    warnings.push(`Unknown material "${materialId}", using ${findMaterial(d.materialId).name}.`)
-    materialId = d.materialId
+    warnings.push(`Unknown material "${materialId}", using ${findMaterial(defaultMaterial).name}.`)
+    materialId = defaultMaterial
   }
-  const mo = p.machine === undefined ? d.machine : obj(p.machine, 'machine')
-  const machine = { name: str(mo, 'name', 'machine'), w: num(mo, 'w', 'machine', undefined, 1), h: num(mo, 'h', 'machine', undefined, 1), maxRpm: num(mo, 'maxRpm', 'machine', undefined, 1) }
-  const bo = p.bits === undefined ? d.bits : obj(p.bits, 'bits')
+  const mo = obj(p.machine, 'machine')
+  const machine = { name: str(mo, 'name', 'machine'), w: num(mo, 'w', 'machine', 1), h: num(mo, 'h', 'machine', 1), maxRpm: num(mo, 'maxRpm', 'machine', 1) }
+  const bo = obj(p.bits, 'bits')
   const detail = bo.detail === undefined ? undefined : str(bo, 'detail', 'bits')
   const bits = { rough: str(bo, 'rough', 'bits'), ...(detail && { detail }) }
   for (const id of [bits.rough, detail]) if (id !== undefined && !BITS.some((b) => b.id === id)) fail(`unknown bit ${id}`)
   const bitOverrides = overrides(p.bitOverrides, bits, warnings)
-  const rec = (role: BitRole) => recommendedSettings(findMaterial(materialId), effectiveBit({ bits, bitOverrides }, role), machine.maxRpm)
-  const co = p.cutSettings === undefined ? {} : obj(p.cutSettings, 'cutSettings')
-  const custom = p.cutSettingsCustom === undefined ? {} : obj(p.cutSettingsCustom, 'cutSettingsCustom')
+  const co = obj(p.cutSettings, 'cutSettings')
+  if (!detail && co.detail !== undefined) fail('cutSettings.detail is present without a detail bit')
+  const custom = obj(p.cutSettingsCustom, 'cutSettingsCustom')
   if (!Array.isArray(p.shapes)) fail('shapes must be an array')
   const ids = new Set<string>()
   const shapes = (p.shapes as unknown[]).map((v, i) => {
@@ -283,22 +273,22 @@ function projectFromData(data: unknown, warnings: string[]): Project {
 
   return {
     id: str(p, 'id', 'project'),
-    name: str(p, 'name', 'project', d.name),
-    units: oneOf(p, 'units', 'project', ['mm', 'in'] as const, d.units),
+    name: str(p, 'name', 'project'),
+    units: oneOf(p, 'units', 'project', ['mm', 'in'] as const),
     stock,
     materialId,
     bits,
     cutSettings: {
-      rough: settings(co.rough, 'cutSettings.rough', rec('rough')),
-      ...(detail && { detail: settings(co.detail, 'cutSettings.detail', rec('detail')) }),
+      rough: settings(co.rough, 'cutSettings.rough'),
+      ...(detail && { detail: settings(co.detail, 'cutSettings.detail') }),
     },
     cutSettingsCustom: {
-      rough: bool(custom, 'rough', 'cutSettingsCustom', false),
-      detail: !!detail && bool(custom, 'detail', 'cutSettingsCustom', false),
+      rough: bool(custom, 'rough', 'cutSettingsCustom'),
+      detail: bool(custom, 'detail', 'cutSettingsCustom') && !!detail,
     },
     bitOverrides,
     machine,
-    origin: origin(p.origin, stock, d.origin, warnings),
+    origin: origin(p.origin, stock, warnings),
     shapes,
   }
 }

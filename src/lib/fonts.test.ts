@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { parse } from 'opentype.js'
 import { expect, test, vi } from 'vitest'
-import type { Point, Polyline, TextShape } from '../model'
+import { DEFAULT_TEXT_LAYOUT, type Point, type Polyline, type TextShape } from '../model'
 import { cubicSegments, flattenCubic, flattenQuad } from './bezier'
 import { filterFontsourceIndex, fontFamily, fontSource, FONTS, glyphPolylines, loadFont, missingGlyphs, uploadFont } from './fonts'
 import { polylineBounds, scaleShape } from './geometry'
@@ -22,7 +22,7 @@ test('glyph outlines become closed polylines, one per contour', () => {
 })
 
 test('text scales uniformly by the dominant factor', () => {
-  const t: TextShape = { id: 't', name: 't', type: 'text', x: 0, y: 0, rotation: 0, text: 'A', font: 'roboto', size: 20, w: 10, h: 14 }
+  const t: TextShape = { id: 't', name: 't', type: 'text', x: 0, y: 0, rotation: 0, text: 'A', font: 'roboto', size: 20, w: 10, h: 14, ...DEFAULT_TEXT_LAYOUT }
   expect(scaleShape(t, 0.5, 1)).toMatchObject({ size: 10, w: 5, h: 7 })
   expect(scaleShape(t, 1.5, 2)).toMatchObject({ size: 40, w: 20, h: 28 })
 })

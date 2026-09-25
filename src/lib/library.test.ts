@@ -37,7 +37,7 @@ test('library ids are unique and every combination is sane', () => {
 
 test('effectiveBit merges the role override and marks it custom', () => {
   const bits = { rough: '1/8-endmill', detail: '60-vbit' }
-  expect(effectiveBit({ bits }, 'rough')).toBe(findBit('1/8-endmill'))
+  expect(effectiveBit({ bits, bitOverrides: {} }, 'rough')).toBe(findBit('1/8-endmill'))
   expect(effectiveBit({ bits, bitOverrides: { rough: {} } }, 'rough')).toBe(findBit('1/8-endmill'))
   expect(effectiveBit({ bits, bitOverrides: { rough: { diameter: 6 } } }, 'rough').name).toBe('1/8" (3.175 mm) endmill (custom 6 mm)')
   expect(effectiveBit({ bits, bitOverrides: { detail: { angle: 30, flat: 1 } } }, 'detail')).toEqual({
