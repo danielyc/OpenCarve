@@ -139,6 +139,8 @@ test('simulate lists ops and selects the shape', async ({ page }) => {
   await expect(rows.first()).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('[data-id].selected')).toHaveCount(1)
   await expect(page.locator('.toolpaths.highlight')).toHaveCount(1)
+  await expect(page.locator('.selection-frame polygon')).toHaveCount(1)
+  await expect(page.locator('.handle')).toHaveCount(0) // no scale/rotate handles outside Design
 
   await page.getByRole('button', { name: 'Design', exact: true }).click()
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Rectangle')

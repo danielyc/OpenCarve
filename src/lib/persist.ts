@@ -1,5 +1,5 @@
 import { del, get, set, update } from 'idb-keyval'
-import { newId, type Project } from '../model'
+import { newId, newProject, type Project } from '../model'
 import { useAppStore } from '../store'
 import { parseProject, serializeProject } from './projectFile'
 
@@ -126,6 +126,13 @@ export async function boot() {
 export async function goHome() {
   await flush()
   useAppStore.getState().setScreen('home')
+}
+
+// New projects are stored right away so they show up in the project list even before the first edit.
+export async function createProject() {
+  const p = newProject()
+  useAppStore.getState().loadProject(p)
+  await write(p)
 }
 
 // Opened files get a fresh id so they never overwrite a stored project, and are stored right away.

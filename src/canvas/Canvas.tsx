@@ -171,7 +171,8 @@ export default function Canvas() {
   const { zoom, panX, panY } = view
   const { stock, units } = project
   const selected = project.shapes.filter((s) => selection.includes(s.id))
-  const frame = tool === 'select' && drag?.kind !== 'marquee' ? selectionFrame(selected) : null
+  const selecting = tool === 'select' || step !== 'design'
+  const frame = selecting && drag?.kind !== 'marquee' ? selectionFrame(selected) : null
   const toScreen = ([x, y]: Point): Point => [panX + x * zoom, panY - y * zoom]
   const pts = (ps: Point[]) => ps.map((p) => toScreen(p).join(',')).join(' ')
 
@@ -272,7 +273,9 @@ export default function Canvas() {
       return
     }
     if (e.button !== 0) return
-    if (tool === 'text') {
+    // Simulate and Export only select: no drawing, moving or scaling.
+    const design = step === 'design'
+    if (design && tool === 'text') {
       const font = FONTS[0].id
       st.setTool('select')
       loadFont(font)
@@ -280,19 +283,19 @@ export default function Canvas() {
         .catch(console.error)
       return
     }
-    if (tool === 'pen') {
+    if (design && tool === 'pen') {
       if (pen.length >= 3 && dist(p, pen[0]) < CLOSE_PX / zoom) finishPen(pen, true)
       else setPen([...pen, p])
       return
     }
     e.currentTarget.setPointerCapture(e.pointerId)
-    if (tool !== 'select') {
+    if (design && tool !== 'select') {
       setDrag({ kind: 'create', start: p, current: p, shift: e.shiftKey, keep: [] })
       return
     }
     const target = e.target as Element
     const handle = target.closest('[data-handle]')?.getAttribute('data-handle')
-    if (handle && frame) {
+    if (design && handle && frame) {
       st.beginTransient()
       const apply = handle === 'rotate' ? rotateFn(selected, frame, p) : scaleFn(selected, frame, handle.split(',').map(Number) as Point)
       setDrag({ kind: 'transform', ids: selection, apply })
@@ -308,7 +311,7 @@ export default function Canvas() {
     if (e.shiftKey) ids = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]
     else if (!ids.includes(id)) ids = [id]
     st.setSelection(ids)
-    if (!ids.includes(id)) return
+    if (!design || !ids.includes(id)) return
     const base = project.shapes.filter((s) => ids.includes(s.id))
     st.beginTransient()
     setDrag({ kind: 'transform', ids, apply: (q) => base.map((s) => ({ ...s, x: s.x + q[0] - p[0], y: s.y + q[1] - p[1] })) })
@@ -318,7 +321,7 @@ export default function Canvas() {
     const p = eventPoint(e)
     setCursor(p)
     if (!drag) {
-      setHover(tool === 'select' ? ((e.target as Element).closest('[data-id]')?.getAttribute('data-id') ?? null) : null)
+      setHover(selecting ? ((e.target as Element).closest('[data-id]')?.getAttribute('data-id') ?? null) : null)
       return
     }
     if (drag.kind === 'pan') {
@@ -371,13 +374,17 @@ export default function Canvas() {
     overlay = (
       <g className="selection-frame">
         <polygon points={pts(corners)} />
-        <line x1={top[0]} y1={top[1]} x2={rot[0]} y2={rot[1]} />
-        <circle data-handle="rotate" className="handle rotate" cx={rot[0]} cy={rot[1]} r={HANDLE / 2 + 1} />
-        {HANDLES.map((h) => {
-          const [x, y] = toScreen(toWorld(frame, handleLocal(frame, h)))
-          const cursor = !h[0] ? 'ns-resize' : !h[1] ? 'ew-resize' : h[0] * h[1] > 0 ? 'nesw-resize' : 'nwse-resize'
-          return <rect key={h.join()} data-handle={h.join()} className="handle" style={{ cursor }} x={x - HANDLE / 2} y={y - HANDLE / 2} width={HANDLE} height={HANDLE} />
-        })}
+        {step === 'design' && (
+          <>
+            <line x1={top[0]} y1={top[1]} x2={rot[0]} y2={rot[1]} />
+            <circle data-handle="rotate" className="handle rotate" cx={rot[0]} cy={rot[1]} r={HANDLE / 2 + 1} />
+            {HANDLES.map((h) => {
+              const [x, y] = toScreen(toWorld(frame, handleLocal(frame, h)))
+              const cursor = !h[0] ? 'ns-resize' : !h[1] ? 'ew-resize' : h[0] * h[1] > 0 ? 'nesw-resize' : 'nwse-resize'
+              return <rect key={h.join()} data-handle={h.join()} className="handle" style={{ cursor }} x={x - HANDLE / 2} y={y - HANDLE / 2} width={HANDLE} height={HANDLE} />
+            })}
+          </>
+        )}
       </g>
     )
   }
@@ -402,7 +409,7 @@ export default function Canvas() {
       </div>
       <svg
         ref={svgRef}
-        className={`canvas-svg tool-${tool}${space || drag?.kind === 'pan' ? ' panning' : ''}`}
+        className={`canvas-svg tool-${step === 'design' ? tool : 'select'}${space || drag?.kind === 'pan' ? ' panning' : ''}`}
         aria-label="Design canvas"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}

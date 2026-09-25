@@ -28,13 +28,15 @@ const TOOLS: { id: Tool; label: string }[] = [
 const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'
 const SHORTCUTS: [string, string][] = [
   ...TOOLS.map((t): [string, string] => [TOOL_KEYS[t.id], `${t.label} tool`]),
-  ['Delete', 'Delete selection'],
+  ['Delete / Backspace', 'Delete selection'],
   [`${mod}+Z`, 'Undo'],
-  [`${mod}+⇧Z`, 'Redo'],
+  [`${mod}+⇧Z / ${mod}+Y`, 'Redo'],
   [`${mod}+D`, 'Duplicate'],
   ['Arrows', 'Nudge 1 mm (⇧ 10 mm)'],
+  ['Enter / double-click', 'Finish pen path'],
   ['Esc', 'Deselect / cancel'],
-  ['Space+drag', 'Pan'],
+  ['Wheel', 'Pan'],
+  ['Space+drag / middle-drag', 'Pan'],
   [`${mod}+wheel`, 'Zoom'],
 ]
 

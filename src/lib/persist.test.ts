@@ -2,7 +2,7 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { newProject } from '../model'
 import { useAppStore } from '../store'
-import { startAutosave } from './persist'
+import { createProject, flush, listProjects, readProject, startAutosave } from './persist'
 
 const db = new Map<string, unknown>()
 let failures = 0
@@ -38,4 +38,17 @@ test('a failed save shows as failed and retries with backoff until it succeeds',
   await vi.advanceTimersByTimeAsync(1)
   expect(st().saveState).toBe('saved')
   expect(db.get(`opencarve:project:${id}`)).toContain('"Draft"')
+})
+
+// Uses the autosave subscription started by the test above.
+test('a new project is stored at once; reopening it does not bump updatedAt', async () => {
+  await createProject()
+  const id = useAppStore.getState().project.id
+  const entry = (await listProjects()).find((e) => e.id === id)!
+  expect(entry).toBeDefined()
+  useAppStore.getState().setScreen('home')
+  await new Promise((r) => setTimeout(r, 5)) // a rewrite would get a later timestamp
+  useAppStore.getState().loadProject((await readProject(id))!)
+  await flush()
+  expect((await listProjects()).find((e) => e.id === id)!.updatedAt).toBe(entry.updatedAt)
 })

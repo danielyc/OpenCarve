@@ -9,7 +9,7 @@ Free, open-source (AGPL-3.0) design and toolpath software for hobby CNC routers,
 - **SVG import**: paths, basic shapes, transforms and groups (use Import or drop a file onto the editor).
 - **Materials, bits and cut settings**: pick a material and bits; feed, plunge, stepdown and RPM are filled in with recommended values you can override.
 - **Cuts**: outline (outside, inside or on the path, with tabs), pocket and V-carve.
-- **Two-stage carves**: a rough bit clears the bulk, an optional detail bit does what the rough bit can't reach (or the V-carve).
+- **Two-stage carves**: a rough bit cuts outlines and clears pockets. An optional detail bit only rest-machines what the rough bit can't reach in pockets and V-carve floors; a V-bit as the detail bit also cuts the V-carves.
 - **Simulate**: toolpaths on the 2D canvas, a 3D preview of the carved result, warnings and an estimated time.
 - **Export** G-code for GRBL-compatible machines, one file per bit.
 - **Autosave** in the browser, a project list, and `.opencarve` files to save, share and back up projects.
@@ -33,7 +33,7 @@ Always check the toolpaths in the 3D preview before you carve. The recommended f
 
 ## Browser support
 
-Any modern browser (Chrome, Edge, Firefox, Safari). Toolpaths are computed in Web Workers; the 3D preview needs WebGL.
+Tested in Chromium (Chrome, Edge); should work in Firefox and Safari. Toolpaths are computed in Web Workers; the 3D preview needs WebGL.
 
 ## Project files
 
@@ -54,7 +54,7 @@ bun run test:e2e   # end-to-end tests (Playwright; run `bunx playwright install 
 
 The build uses relative paths, so `dist/` can be served from any path, for example `bunx serve dist`.
 
-GitHub Actions runs lint, build and all tests on every push and pull request (`.github/workflows/ci.yml`). `.github/workflows/pages.yml` deploys `dist/` to GitHub Pages on every push to `main`; it starts working once the repository is on GitHub with Settings → Pages → Source set to "GitHub Actions".
+GitHub Actions runs lint, build and all tests on pushes to `main` and on pull requests (`.github/workflows/ci.yml`). `.github/workflows/pages.yml` deploys `dist/` to GitHub Pages after CI passes on `main`; it starts working once the repository is on GitHub with Settings → Pages → Source set to "GitHub Actions".
 
 ## Fonts
 

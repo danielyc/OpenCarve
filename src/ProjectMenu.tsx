@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { OpenFileButton } from './Home'
-import { downloadProject, goHome } from './lib/persist'
+import { createProject, downloadProject, goHome } from './lib/persist'
 import { useAppStore } from './store'
 
 export default function ProjectMenu() {
@@ -66,7 +66,7 @@ export default function ProjectMenu() {
       <details className="project-actions" ref={menu}>
         <summary className="menu-button">File</summary>
         <div className="menu" onClick={() => menu.current?.removeAttribute('open')}>
-          <button onClick={() => useAppStore.getState().newProject()}>New project</button>
+          <button onClick={() => void createProject()}>New project</button>
           <OpenFileButton>Open file…</OpenFileButton>
           <button onClick={() => downloadProject(useAppStore.getState().project)}>Save as file</button>
         </div>

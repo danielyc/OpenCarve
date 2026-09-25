@@ -196,8 +196,10 @@ describe('detail', () => {
     for (const [x, y] of pts) expect(Math.min(Math.abs(x - 25), Math.abs(x - 75)) + Math.min(Math.abs(y - 25), Math.abs(y - 75))).toBeLessThan(8)
   })
   it('warns when the rough bit leaves more than corners and there is no usable detail bit', () => {
-    const slot = { ...rect(40, 2.5), cut: { ...defaultCut(12), type: 'pocket' as const, depth: 3 } }
-    expect(planProject(project([slot])).warnings).toContain("The rough bit can't reach all of Rect; add a smaller detail bit")
+    // A square the bit fits in, with a slot too narrow for it.
+    const points: Point[] = [[-10, -10], [10, -10], [10, 10], [1.25, 10], [1.25, 30], [-1.25, 30], [-1.25, 10], [-10, 10]]
+    const keyhole: CompoundShape = { id: 'k', type: 'compound', name: 'Rect', x: 50, y: 50, rotation: 0, paths: [{ closed: true, points }], cut: { ...defaultCut(12), type: 'pocket', depth: 3 } }
+    expect(planProject(project([keyhole])).warnings).toEqual(["The rough bit can't reach all of Rect; add a smaller detail bit"])
     expect(planProject(project([pocket])).warnings).toEqual([])
     expect(planProject(project([pocket], '1mm-endmill', '6mm-endmill')).warnings).toContain('The detail bit must be smaller than the rough bit')
   })
@@ -295,7 +297,7 @@ describe('ordering and tab limits', () => {
   })
   it('no "bit too large" when the detail bit pockets the shape', () => {
     const small = { ...rect(5, 5), cut: { ...defaultCut(12), type: 'pocket' as const, depth: 3 } }
-    expect(planProject(project([small], '6mm-endmill')).warnings).toContain('Bit too large for Rect')
+    expect(planProject(project([small], '6mm-endmill')).warnings).toEqual(['Bit too large for Rect']) // not also "can't reach"
     const r = planProject(project([small], '6mm-endmill', '1mm-endmill'))
     expect(r.warnings).not.toContain('Bit too large for Rect')
     expect(r.ops.map((o) => o.kind)).toEqual(['pocket-detail'])

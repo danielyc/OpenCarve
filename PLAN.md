@@ -46,3 +46,7 @@ All ten steps are done.
 - No image tracing.
 - No machine sender (by design).
 - Autosave is last-write-wins when the same project is open in several tabs.
+- G-code uses only straight moves (no G2/G3 arcs).
+- The time estimate ignores acceleration, so real jobs take longer.
+- The detail bit only rest-machines pockets and V-carve floors (outlines always use the rough bit).
+- Tested in Chromium only.

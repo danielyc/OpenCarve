@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { deleteProject, duplicateProject, listProjects, openFile, readProject, type ProjectEntry } from './lib/persist'
+import { createProject, deleteProject, duplicateProject, listProjects, openFile, readProject, type ProjectEntry } from './lib/persist'
 import { formatLength } from './lib/units'
 import { useAppStore } from './store'
 
@@ -47,7 +47,7 @@ export default function Home() {
         <h1 className="brand">OpenCarve</h1>
         <div className="home-actions">
           <OpenFileButton>Open file…</OpenFileButton>
-          <button className="primary" onClick={() => useAppStore.getState().newProject()}>
+          <button className="primary" onClick={() => void createProject()}>
             New project
           </button>
         </div>

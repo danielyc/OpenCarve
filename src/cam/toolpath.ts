@@ -446,6 +446,7 @@ export function planProject(project: Project): CamResult {
     // Rest machining: what the rough bit's radius couldn't reach, widened so the detail bit can get in, clipped to the pocket.
     const rest = opening(boolean(ClipType.Difference, region, opening(region, r)), SLIVER)
     let detailed = false
+    const fits = !!inflate(region, -r).length
     if (usableDetail) {
       const dr = detailBit.diameter / 2
       if (rest.length) detailed = !!push(ops, 'detail', 'pocket-detail', pocketSegments(boolean(ClipType.Intersection, region, inflate(rest, 2 * dr)), dr, ds, depth))
@@ -453,9 +454,9 @@ export function planProject(project: Project): CamResult {
       if (detailBit && detailBit.type !== 'vbit') warnings.push('The detail bit must be smaller than the rough bit')
       // ponytail: round inside corners always leave a little rest (about 0.17 r deep), so only leftovers wider than
       // about 0.5 r are flagged; narrower slivers go unmentioned. Measure the rest's depth if that proves too lax.
-      if (inflate(rest, -0.25 * r).length) warnings.push(`The rough bit can't reach all of ${shape.name}; add a smaller detail bit`)
+      if (fits && inflate(rest, -0.25 * r).length) warnings.push(`The rough bit can't reach all of ${shape.name}; add a smaller detail bit`)
     }
-    if (region.length && !inflate(region, -r).length && !detailed) warnings.push(tooLarge)
+    if (region.length && !fits && !detailed) warnings.push(tooLarge) // one warning per cause: not also "can't reach"
   }
   ops.push(...last)
   if (freed && ops.some((o) => o.role === 'detail')) warnings.push('Parts are cut free before the detail pass; keep tabs on')
