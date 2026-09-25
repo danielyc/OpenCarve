@@ -91,7 +91,24 @@ function shape(v: unknown, i: number, thickness: number, warn: (msg: string) => 
         warn(`Unknown font "${font}", using ${FONTS[0].name}.`)
         font = FONTS[0].id
       }
-      s = { ...base, type, ...size(), text: str(o, 'text', what), font, size: num(o, 'size', what, undefined, 0) }
+      const sz = num(o, 'size', what, undefined, 0)
+      const range = (key: string, def: number, min: number, max: number) => {
+        const v = num(o, key, what, def, min)
+        return v <= max ? v : fail(`${what}.${key} must be ≤ ${max}`)
+      }
+      s = {
+        ...base,
+        type,
+        ...size(),
+        text: str(o, 'text', what),
+        font,
+        size: sz,
+        letterSpacing: num(o, 'letterSpacing', what, 0, -sz / 2),
+        lineHeight: range('lineHeight', 1.2, 0.5, 3),
+        align: oneOf(o, 'align', what, ['left', 'center', 'right'] as const, 'center'),
+        arc: range('arc', 0, -360, 360),
+        mirror: bool(o, 'mirror', what, false),
+      }
       break
     }
     case 'compound': {

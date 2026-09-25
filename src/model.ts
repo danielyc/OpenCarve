@@ -49,6 +49,11 @@ export interface TextShape extends ShapeBase {
   size: number
   w: number
   h: number
+  letterSpacing?: number // mm between glyphs, default 0, >= -size/2
+  lineHeight?: number // × size, default 1.2, 0.5–3
+  align?: 'left' | 'center' | 'right' // default center
+  arc?: number // bend in degrees, default 0; positive arches up (centre below), negative down; -360..360
+  mirror?: boolean // horizontal flip, default false
 }
 
 // Coordinates: XY origin is the stock's bottom-left corner, Y up; Z zero is the top of the stock there, Z down negative.

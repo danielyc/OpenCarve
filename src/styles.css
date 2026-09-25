@@ -1053,3 +1053,48 @@ input.project-name {
   margin: 0 0 28px;
   color: var(--muted);
 }
+
+.field textarea {
+  width: 100%;
+  padding: 5px 7px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  resize: vertical;
+}
+
+.field textarea:focus-visible {
+  outline-offset: 0;
+  border-color: var(--accent);
+}
+
+.field .segmented {
+  margin-top: 0;
+  align-self: start;
+}
+
+.field .segmented label {
+  display: grid;
+  padding: 3px 6px;
+}
+
+.fields > .check {
+  margin: 0;
+  align-self: end;
+  padding-bottom: 4px;
+}
+
+.bend {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  align-items: end;
+}
+
+.bend input[type='range'] {
+  margin: 0 0 6px;
+}

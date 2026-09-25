@@ -1,5 +1,5 @@
 import type { Font } from 'opentype.js'
-import type { Polyline } from '../model'
+import type { Point, Polyline, TextShape } from '../model'
 import { commandsToPolylines, type PathCommand } from './bezier'
 
 export const FONTS = [
@@ -44,38 +44,81 @@ export function loadFont(id: string): Promise<Font> {
   return p
 }
 
+export type TextStyle = Pick<TextShape, 'letterSpacing' | 'lineHeight' | 'align' | 'arc' | 'mirror'>
+
 // Glyphs are laid out one by one (advance + kerning) because opentype.js's shaping throws on some GSUB tables.
-// ponytail: no ligatures or complex-script shaping; single line only.
-export function glyphPolylines(font: Font, text: string, size: number): Polyline[] {
+// ponytail: no ligatures or complex-script shaping.
+// Lines stack down from the first baseline at y = 0 and align within the widest line's advance width. A bend maps
+// each line's advance length onto an arc about a common centre (below for a positive bend, above for negative),
+// each glyph turned about its advance centre so its baseline is tangent. The first baseline's radius is the widest
+// line's length / bend; later lines nest at radius ∓ i × lineHeight × size, keeping their arc length.
+export function glyphPolylines(font: Font, text: string, size: number, style: TextStyle = {}): Polyline[] {
+  const { letterSpacing = 0, lineHeight = 1.2, align = 'center', arc = 0, mirror = false } = style
   const scale = size / font.unitsPerEm
+  const lines = text.split('\n').map((line) => {
+    const glyphs: { polys: Polyline[]; center: number }[] = []
+    let x = 0
+    let prev = null
+    for (const ch of line) {
+      const glyph = font.charToGlyph(ch)
+      if (prev) x += font.getKerningValue(prev, glyph) * scale + letterSpacing
+      // Glyph contours are always closed, but opentype.js doesn't always emit Z.
+      const cmds = (glyph.getPath(x, 0, size).commands as PathCommand[]).flatMap((c): PathCommand[] => (c.type === 'M' ? [{ type: 'Z' }, c] : [c]))
+      const advance = (glyph.advanceWidth ?? 0) * scale
+      glyphs.push({
+        polys: commandsToPolylines([...cmds, { type: 'Z' }]).map(({ points }) => ({ closed: true, points: points.map(([px, py]): Point => [px, -py]) })),
+        center: x + advance / 2,
+      })
+      x += advance
+      prev = glyph
+    }
+    return { glyphs, length: x }
+  })
+  const width = Math.max(...lines.map((l) => l.length))
+  const theta = (arc * Math.PI) / 180
+  const sign = Math.sign(theta)
+  const radius = Math.max(0.1, width / Math.abs(theta))
   const out: Polyline[] = []
-  let x = 0
-  let prev = null
-  for (const ch of text) {
-    const glyph = font.charToGlyph(ch)
-    if (prev) x += font.getKerningValue(prev, glyph) * scale
-    // Glyph contours are always closed, but opentype.js doesn't always emit Z.
-    const cmds = (glyph.getPath(x, 0, size).commands as PathCommand[]).flatMap((c): PathCommand[] => (c.type === 'M' ? [{ type: 'Z' }, c] : [c]))
-    for (const { points } of commandsToPolylines([...cmds, { type: 'Z' }])) out.push({ closed: true, points: points.map(([px, py]) => [px, -py]) })
-    x += (glyph.advanceWidth ?? 0) * scale
-    prev = glyph
+  lines.forEach(({ glyphs, length }, i) => {
+    const offset = (align === 'left' ? 0 : align === 'right' ? width - length : (width - length) / 2) - width / 2
+    const baseline = -i * lineHeight * size
+    const r = Math.max(0.1, radius - sign * i * lineHeight * size)
+    for (const { polys, center } of glyphs) {
+      let place = ([px, py]: Point): Point => [px + offset, py + baseline]
+      if (theta) {
+        // On an arc, lines align by angle within the widest line's span so nested lines line up radially.
+        const start = align === 'left' ? -Math.abs(theta) / 2 : align === 'right' ? Math.abs(theta) / 2 - length / r : -length / (2 * r)
+        const phi = start + center / r
+        const [c, s] = [Math.cos(-sign * phi), Math.sin(-sign * phi)]
+        const [ox, oy] = [r * Math.sin(phi), sign * (r * Math.cos(phi) - radius)]
+        place = ([px, py]) => [ox + (px - center) * c - py * s, oy + (px - center) * s + py * c]
+      }
+      for (const p of polys) out.push({ closed: true, points: p.points.map(place) })
+    }
+  })
+  // Mirroring reverses each contour's point order so its winding (outer vs hole) survives the flip.
+  if (mirror) {
+    let [min, max] = [Infinity, -Infinity]
+    for (const p of out) for (const [x] of p.points) [min, max] = [Math.min(min, x), Math.max(max, x)]
+    const mid = (min + max) / 2
+    return out.map((p) => ({ closed: true, points: p.points.map(([x, y]): Point => [2 * mid - x, y]).reverse() }))
   }
   return out
 }
 
 // Flattened at the real size (mm) so the tolerance holds. Returns null (and starts loading) until the font is ready;
 // a font that failed to load is only retried by an explicit loadFont().
-export function textGlyphs(fontId: string, size: number, text: string): Polyline[] | null {
-  const font = loaded.get(fontId)
+export function textGlyphs(t: Pick<TextShape, 'font' | 'size' | 'text'> & TextStyle): Polyline[] | null {
+  const font = loaded.get(t.font)
   if (!font) {
-    if (!pending.has(fontId) && !failed.has(fontId)) loadFont(fontId).catch(console.error)
+    if (!pending.has(t.font) && !failed.has(t.font)) loadFont(t.font).catch(console.error)
     return null
   }
-  const key = `${fontId}|${size}|${text}`
+  const key = JSON.stringify([t.font, t.size, t.text, t.letterSpacing, t.lineHeight, t.align, t.arc, t.mirror])
   let polys = glyphCache.get(key)
   if (!polys) {
     if (glyphCache.size >= CACHE_SIZE) glyphCache.delete(glyphCache.keys().next().value!)
-    glyphCache.set(key, (polys = glyphPolylines(font, text, size)))
+    glyphCache.set(key, (polys = glyphPolylines(font, t.text, t.size, t)))
   }
   return polys
 }

@@ -11,7 +11,7 @@ const sample = (): Project => ({
   cutSettingsCustom: { rough: false, detail: true },
   shapes: [
     { id: 'a', type: 'rect', name: 'Rect', x: 10, y: 20, rotation: 15, w: 30, h: 40, cut: defaultCut(12) },
-    { id: 'b', type: 'text', name: 'Text', x: 50, y: 50, rotation: 0, text: 'Hi', font: 'lora', size: 20, w: 18, h: 14 },
+    { id: 'b', type: 'text', name: 'Text', x: 50, y: 50, rotation: 0, text: 'Hi\nthere', font: 'lora', size: 20, w: 18, h: 14, letterSpacing: -1.5, lineHeight: 0.9, align: 'right', arc: -120, mirror: true },
     { id: 'c', type: 'compound', name: 'Logo', x: 0, y: 0, rotation: 0, fillRule: 'evenodd', paths: [{ closed: true, points: [[0, 0], [5, 0], [5, 5]] }] },
     { id: 'd', type: 'path', name: 'Path', x: 1, y: 1, rotation: 0, closed: false, points: [[0, 0], [9, 9]], cut: { ...defaultCut(12), type: 'outline', side: 'on' } },
   ],
@@ -76,4 +76,12 @@ test('clamps polygon sides and renames duplicate shape ids', () => {
   expect(p.shapes.map((s) => s.type === 'polygon' && s.sides)).toEqual([3, 64])
   expect(p.shapes[0].id).toBe('p')
   expect(p.shapes[1].id).not.toBe('p')
+})
+
+test('fills text layout defaults for old files and rejects out-of-range values', () => {
+  const text = { id: 't', type: 'text', x: 0, y: 0, text: 'A', font: 'roboto', size: 10, w: 5, h: 7 }
+  expect(parseProject(file({ ...sample(), shapes: [text] })).shapes[0]).toMatchObject({ letterSpacing: 0, lineHeight: 1.2, align: 'center', arc: 0, mirror: false })
+  for (const [key, bad] of [['letterSpacing', -6], ['lineHeight', 0.4], ['lineHeight', 3.5], ['arc', 400], ['arc', -361], ['align', 'justify'], ['mirror', 'yes']] as const) {
+    expect(() => parseProject(file({ ...sample(), shapes: [{ ...text, [key]: bad }] }))).toThrow(new RegExp(`shapes\\[0\\].${key}`))
+  }
 })

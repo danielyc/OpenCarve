@@ -59,6 +59,31 @@ test('places a text shape with the text tool', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Select' })).toHaveAttribute('aria-pressed', 'true')
 })
 
+test('bends a text and makes it two lines', async ({ page }) => {
+  await page.getByRole('button', { name: 'Text' }).click()
+  const box = (await page.getByLabel('Design canvas').boundingBox())!
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+  const content = page.getByLabel('Text', { exact: true })
+  await content.fill('Hello world')
+  await content.press('Escape')
+  const w = page.getByLabel('W', { exact: true })
+  const h = page.getByLabel('H', { exact: true })
+  const [w0, h0] = [parseFloat(await w.inputValue()), parseFloat(await h.inputValue())]
+
+  const bend = page.getByLabel('Bend °', { exact: true })
+  await bend.fill('90')
+  await bend.press('Enter')
+  await expect(page.getByRole('slider', { name: 'Bend' })).toHaveValue('90')
+  await expect.poll(async () => parseFloat(await w.inputValue())).not.toBe(w0)
+  await expect.poll(async () => parseFloat(await h.inputValue())).toBeGreaterThan(h0)
+  const h1 = parseFloat(await h.inputValue())
+
+  await content.fill('Hello\nworld')
+  await content.press('Escape')
+  await expect(content).toHaveValue('Hello\nworld')
+  await expect.poll(async () => parseFloat(await h.inputValue())).toBeGreaterThan(h1)
+})
+
 test('imports an SVG file', async ({ page }) => {
   await page.locator('input[accept*=svg]').setInputFiles('e2e/fixtures/shapes.svg')
   await expect(page.locator('[data-id]')).toHaveCount(3)
