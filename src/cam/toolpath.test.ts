@@ -333,6 +333,7 @@ describe('custom G-code blocks', () => {
     expect(w('g21g90 m04 s9000')).toEqual([])
     expect(w('G21 (G90) ; M3\nM30')).toEqual([spindle, units])
     expect(w('G90 M3')).toEqual([units])
+    expect(w('G21 G90.1 M3')).toEqual([units]) // G90.1 is a different word (arc centre mode)
   })
 })
 

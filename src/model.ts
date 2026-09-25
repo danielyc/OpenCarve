@@ -182,8 +182,8 @@ export const MAX_GCODE_BLOCK = 20_000
 
 // G-code without its comments: `(...)` and everything after `;`.
 const gcodeWords = (text: string) => text.replace(/\([^)\n]*\)?/g, ' ').replace(/;.*/g, ' ')
-// True if the code has this word, e.g. hasWord(code, 'G', '21') matches G21, g021 and G21.1 but not G210 or XG21.
-const hasWord = (code: string, letter: string, num: string) => new RegExp(`(?<![a-z])${letter}\\s*0*${num}(?:\\.\\d+)?(?!\\d)`, 'i').test(code)
+// True if the code has this word, e.g. hasWord(code, 'G', '21') matches G21, g021 and G21.0 but not G21.1 (a distinct word), G210 or XG21.
+const hasWord = (code: string, letter: string, num: string) => new RegExp(`(?<![a-z])${letter}\\s*0*${num}(?:\\.0+)?(?![\\d.])`, 'i').test(code)
 
 // Printable ASCII, tabs and line breaks only, so the file is plain for any controller. The header may not switch to
 // inches (G20), incremental moves (G91) or inverse-time feeds (G93): OpenCarve's moves are absolute millimetres at
