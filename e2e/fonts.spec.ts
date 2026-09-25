@@ -47,6 +47,29 @@ test('keys on the font picker trigger never reach the canvas shortcuts', async (
   await expect(page.getByLabel('Search fonts')).toBeHidden()
 })
 
+test('renders a sample in each font next to its name', async ({ page }) => {
+  const family = (el: Element) => getComputedStyle(el).fontFamily
+  await page.getByRole('button', { name: 'Font: Roboto' }).click()
+  const lora = page.getByRole('region', { name: 'Bundled' }).getByRole('button', { name: /^Lora/ })
+  const loraSample = lora.locator('.font-sample')
+  await expect(loraSample).toHaveAttribute('data-preview', 'loaded')
+  expect(await loraSample.evaluate(family)).toMatch(/^"?oc-preview-lora"?,/)
+  expect(await lora.evaluate(family)).not.toMatch(/oc-preview/) // the name stays in the UI font
+
+  await page.getByLabel('Upload font file').setInputFiles('public/fonts/Roboto-Regular.ttf')
+  const uploaded = page.getByRole('region', { name: 'Your fonts' }).getByRole('button', { name: /^Roboto/ })
+  const sample = uploaded.locator('.font-sample')
+  await expect(sample).not.toHaveAttribute('data-preview') // below the fold: previews load only in view
+  await uploaded.scrollIntoViewIfNeeded()
+  await expect(sample).toHaveAttribute('data-preview', 'loaded')
+  expect(await sample.evaluate(family)).toMatch(/^"?oc-preview-upload-/)
+
+  page.on('dialog', (d) => void d.accept())
+  await page.getByRole('button', { name: /^Remove Roboto/ }).click()
+  await expect(uploaded).toBeHidden()
+  expect(await page.evaluate(() => [...document.fonts].some((f) => f.family.includes('oc-preview-upload-')))).toBe(false)
+})
+
 test('warns about characters the font cannot draw', async ({ page }) => {
   await page.getByRole('button', { name: 'Font: Roboto' }).click()
   await page.getByLabel('Search fonts').fill('Allerta')
