@@ -70,7 +70,7 @@ export function localPolylines(shape: Shape): Polyline[] {
     case 'compound':
       return shape.paths
     case 'text': {
-      const polys = textGlyphs(shape.font, shape.size, shape.text) ?? []
+      const polys = textGlyphs(shape) ?? []
       const b = polylineBounds(polys)
       const cx = (b.minX + b.maxX) / 2
       const cy = (b.minY + b.maxY) / 2
@@ -111,7 +111,7 @@ export function scaleShape(shape: Shape, sx: number, sy: number): Shape {
       return { ...shape, paths: shape.paths.map((p) => ({ ...p, points: scale(p.points) })) }
     case 'text': {
       const f = dominantScale(sx, sy)
-      return { ...shape, size: shape.size * f, w: shape.w * f, h: shape.h * f }
+      return { ...shape, size: shape.size * f, w: shape.w * f, h: shape.h * f, ...(shape.letterSpacing && { letterSpacing: shape.letterSpacing * f }) }
     }
     default:
       return { ...shape, w: shape.w * Math.abs(sx), h: shape.h * Math.abs(sy) }

@@ -227,6 +227,16 @@ describe('plan and gcode', () => {
     expect(planProject(p).ops.map((o) => o.shapeId)).toEqual(['c', 'b', 'a'])
     expect(r.timeSec.rough).toBeGreaterThan(0)
   })
+  it('uses the overridden bit diameter', () => {
+    const width = (p: Project) => {
+      const xs = planProject(p).ops.find((o) => o.shapeId === 'a')!.segments.flatMap((g) => g.points.filter((q) => q[2] < 0).map((q) => q[0]))
+      return Math.max(...xs) - Math.min(...xs)
+    }
+    const p = { ...sample(), bitOverrides: { rough: { diameter: 6 } } }
+    expect(width(sample())).toBeCloseTo(103.175, 2)
+    expect(width(p)).toBeCloseTo(106, 2)
+    expect(toGcode(planProject(p), 'rough', p)).toContain('; Bit: 1/8" (3.175 mm) endmill (custom 6 mm)')
+  })
   it('per-op times sum to each bit time', () => {
     const p = project([...sample().shapes, { ...rect(50, 50), id: 'd', x: 150, y: 150, cut: { ...defaultCut(12), type: 'pocket', depth: 3 } }], '6mm-endmill', '1mm-endmill')
     const r = planProject(p)
@@ -356,7 +366,8 @@ describe('v-carve', () => {
     expect(bounds([floor.points.map(([x, y]) => ({ x, y }))])).toEqual({ w: expect.closeTo(52, 2), h: expect.closeTo(12, 2) })
   })
   it('never cuts through: max depth is clamped to thickness - 0.5', () => {
-    const r = planProject(project([vcarve(60, 40, 12)], '1/8-endmill', '90-vbit'))
+    const r = planProject({ ...project([vcarve(60, 40, 12)], '1/8-endmill', '90-vbit'), bitOverrides: { detail: { diameter: 30 } } })
+    expect(r.warnings).toEqual([])
     const zs = r.ops.flatMap(cutPoints).map((q) => q[2])
     expect(Math.min(...zs)).toBeCloseTo(-11.5)
   })
@@ -397,6 +408,47 @@ describe('v-carve', () => {
         prev = q
       }
     }
+  })
+  it('a flat-tipped V-bit never gouges the walls', () => {
+    const shape = vcarve(60, 20, 4)
+    const p = { ...project([shape], '90-vbit'), bitOverrides: { rough: { flat: 1 } } }
+    const f = 0.5
+    const { dist } = regionProbe(shape)
+    const r = planProject(p)
+    expect(r.warnings).toEqual(['Add a flat endmill for a smoother V-carve floor'])
+    let checked = 0
+    for (const op of r.ops) {
+      let prev: Pt3 | null = null
+      for (const seg of op.segments) {
+        for (const q of seg.points) {
+          if (prev && !seg.rapid) {
+            for (let i = 0; i <= 10; i++) {
+              const [x, y, z] = [0, 1, 2].map((j) => prev![j] + ((q[j] - prev![j]) * i) / 10)
+              if (z < 0) expect(-z).toBeLessThanOrEqual(dist(x, y) - f + 0.03) // k = 1
+              checked++
+            }
+          }
+          prev = q
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(100)
+    // The floor contour: the tool centre is f further in than for a sharp tip.
+    const floor = r.ops[1].segments.find((s) => s.points.length > 3 && s.points.every((q) => q[2] === -4))!
+    expect(bounds([floor.points.map(([x, y]) => ({ x, y }))])).toEqual({ w: expect.closeTo(51, 2), h: expect.closeTo(11, 2) })
+  })
+  it('warns about details narrower than the flat tip, not about corners', () => {
+    const thin = { ...vcarve(30, 1.5, 2), id: 't', name: 'Thin' }
+    const p = { ...project([thin], '1/8-endmill', '90-vbit'), bitOverrides: { detail: { flat: 2 } } }
+    expect(planProject(p).warnings).toContain("Some details of Thin are narrower than the V-bit's flat tip")
+    const wide = { ...p, shapes: [vcarve(60, 20, 2)] }
+    expect(planProject(wide).warnings).toEqual([])
+  })
+  it("limits the depth to the V-bit's cone", () => {
+    const p = { ...project([vcarve(60, 20, 2)], '1/8-endmill', '90-vbit'), bitOverrides: { detail: { diameter: 1 } } }
+    const r = planProject(p)
+    expect(r.warnings).toContain("Rect: max depth limited to 0.5 mm by the V-bit's diameter")
+    expect(Math.min(...r.ops.filter((o) => o.role === 'detail').flatMap(cutPoints).map((q) => q[2]))).toBeCloseTo(-0.5)
   })
   it('without a V-bit: warning and no ops', () => {
     const r = planProject(project([vcarve(60, 20, 4)], '1/8-endmill', '1mm-endmill'))

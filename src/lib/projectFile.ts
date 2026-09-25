@@ -1,6 +1,6 @@
-import { defaultCut, MAX_STEPOVER, newId, newProject, validCut, type Cut, type CutSettings, type Point, type Polyline, type Project, type Shape } from '../model'
+import { defaultCut, MAX_STEPOVER, newId, newProject, validCut, type BitOverride, type BitRole, type Cut, type CutSettings, type Point, type Polyline, type Project, type Shape } from '../model'
 import { FONTS } from './fonts'
-import { BITS, findBit, findMaterial, MATERIALS, recommendedSettings } from './library'
+import { BITS, differingFields, effectiveBit, findBit, findMaterial, MATERIALS, overrideError, recommendedSettings } from './library'
 
 // A self-contained, versioned document: the same JSON is the download format and the IndexedDB record,
 // so a sync backend can store it verbatim later.
@@ -91,7 +91,38 @@ function shape(v: unknown, i: number, thickness: number, warn: (msg: string) => 
         warn(`Unknown font "${font}", using ${FONTS[0].name}.`)
         font = FONTS[0].id
       }
-      s = { ...base, type, ...size(), text: str(o, 'text', what), font, size: num(o, 'size', what, undefined, 0) }
+      const sz = num(o, 'size', what, undefined, 0)
+      // Older saves could shrink the size below twice a negative spacing; clamp rather than refuse the file.
+      const spacing = () => {
+        const v = num(o, 'letterSpacing', what, 0)
+        if (v >= -sz / 2) return v
+        warn(`Letter spacing of "${base.name}" was tighter than half its size; set to ${-sz / 2} mm.`)
+        return -sz / 2
+      }
+      const range = (key: string, def: number, min: number, max: number) => {
+        const v = num(o, key, what, def, min)
+        return v <= max ? v : fail(`${what}.${key} must be ≤ ${max}`)
+      }
+      // w/h are a cache of the glyph bounds; a missing or broken one (e.g. NaN saved as null) is estimated, not fatal.
+      const text = str(o, 'text', what)
+      const box = (key: string, estimate: number) => {
+        const v = o[key]
+        return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : estimate
+      }
+      s = {
+        ...base,
+        type,
+        w: box('w', 0.6 * sz * Math.max(...text.split(/\r?\n/).map((l) => l.length))),
+        h: box('h', sz),
+        text,
+        font,
+        size: sz,
+        letterSpacing: spacing(),
+        lineHeight: range('lineHeight', 1.2, 0.5, 3),
+        align: oneOf(o, 'align', what, ['left', 'center', 'right'] as const, 'center'),
+        arc: range('arc', 0, -360, 360),
+        mirror: bool(o, 'mirror', what, false),
+      }
       break
     }
     case 'compound': {
@@ -118,6 +149,23 @@ function settings(v: unknown, what: string, fallback: CutSettings): CutSettings 
     stepover: Math.min(MAX_STEPOVER, positive(o, 'stepover', what, fallback.stepover)),
     direction: oneOf(o, 'direction', what, ['climb', 'conventional'] as const, fallback.direction),
   }
+}
+
+// Overrides for unknown or empty roles, or with bad values, are dropped with a warning.
+function overrides(v: unknown, bits: Project['bits'], warnings: string[]): NonNullable<Project['bitOverrides']> {
+  if (v === undefined) return {}
+  const out: NonNullable<Project['bitOverrides']> = {}
+  for (const [role, ov] of Object.entries(obj(v, 'bitOverrides'))) {
+    const id = role === 'rough' || role === 'detail' ? bits[role] : undefined
+    const o: BitOverride = isObj(ov) ? Object.fromEntries(['diameter', 'angle', 'flat'].filter((k) => ov[k] !== undefined).map((k) => [k, ov[k]])) : {}
+    const error = !id ? `no ${role} bit` : !isObj(ov) ? 'not an object' : overrideError(findBit(id), o)
+    if (error) warnings.push(`Ignored the ${role} bit override: ${error}.`)
+    else {
+      const d = differingFields(findBit(id!), o)
+      if (Object.keys(d).length) out[role as BitRole] = d
+    }
+  }
+  return out
 }
 
 // Recoverable problems (unknown material or font) fall back to defaults and are reported through `warnings`.
@@ -147,7 +195,8 @@ export function parseProject(text: string, warnings: string[] = []): Project {
   const detail = bo.detail === undefined ? undefined : str(bo, 'detail', 'bits')
   const bits = { rough: str(bo, 'rough', 'bits'), ...(detail && { detail }) }
   for (const id of [bits.rough, detail]) if (id !== undefined && !BITS.some((b) => b.id === id)) fail(`unknown bit ${id}`)
-  const rec = (id: string) => recommendedSettings(findMaterial(materialId), findBit(id), machine.maxRpm)
+  const bitOverrides = overrides(p.bitOverrides, bits, warnings)
+  const rec = (role: BitRole) => recommendedSettings(findMaterial(materialId), effectiveBit({ bits, bitOverrides }, role), machine.maxRpm)
   const co = p.cutSettings === undefined ? {} : obj(p.cutSettings, 'cutSettings')
   const custom = p.cutSettingsCustom === undefined ? {} : obj(p.cutSettingsCustom, 'cutSettingsCustom')
   if (!Array.isArray(p.shapes)) fail('shapes must be an array')
@@ -167,13 +216,14 @@ export function parseProject(text: string, warnings: string[] = []): Project {
     materialId,
     bits,
     cutSettings: {
-      rough: settings(co.rough, 'cutSettings.rough', rec(bits.rough)),
-      ...(detail && { detail: settings(co.detail, 'cutSettings.detail', rec(detail)) }),
+      rough: settings(co.rough, 'cutSettings.rough', rec('rough')),
+      ...(detail && { detail: settings(co.detail, 'cutSettings.detail', rec('detail')) }),
     },
     cutSettingsCustom: {
       rough: bool(custom, 'rough', 'cutSettingsCustom', false),
       detail: !!detail && bool(custom, 'detail', 'cutSettingsCustom', false),
     },
+    bitOverrides,
     machine,
     shapes,
   }

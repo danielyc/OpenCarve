@@ -59,6 +59,31 @@ test('places a text shape with the text tool', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Select' })).toHaveAttribute('aria-pressed', 'true')
 })
 
+test('bends a text and makes it two lines', async ({ page }) => {
+  await page.getByRole('button', { name: 'Text' }).click()
+  const box = (await page.getByLabel('Design canvas').boundingBox())!
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+  const content = page.getByLabel('Text', { exact: true })
+  await content.fill('Hello world')
+  await content.press('Escape')
+  const w = page.getByLabel('W', { exact: true })
+  const h = page.getByLabel('H', { exact: true })
+  const [w0, h0] = [parseFloat(await w.inputValue()), parseFloat(await h.inputValue())]
+
+  const bend = page.getByLabel('Bend °', { exact: true })
+  await bend.fill('90')
+  await bend.press('Enter')
+  await expect(page.getByRole('slider', { name: 'Bend' })).toHaveValue('90')
+  await expect.poll(async () => parseFloat(await w.inputValue())).not.toBe(w0)
+  await expect.poll(async () => parseFloat(await h.inputValue())).toBeGreaterThan(h0)
+  const h1 = parseFloat(await h.inputValue())
+
+  await content.fill('Hello\nworld')
+  await content.press('Escape')
+  await expect(content).toHaveValue('Hello\nworld')
+  await expect.poll(async () => parseFloat(await h.inputValue())).toBeGreaterThan(h1)
+})
+
 test('imports an SVG file', async ({ page }) => {
   await page.locator('input[accept*=svg]').setInputFiles('e2e/fixtures/shapes.svg')
   await expect(page.locator('[data-id]')).toHaveCount(3)
@@ -159,4 +184,27 @@ test('badges the Simulate step when a shape is partly outside the stock', async 
   await expect(page.getByRole('button', { name: 'Simulate 1 warning' })).toBeVisible()
   await page.getByRole('button', { name: /^Simulate/ }).click()
   await expect(page.getByRole('list', { name: 'Warnings' })).toContainText('partly outside the stock')
+})
+
+test('overrides the rough bit diameter and resets it', async ({ page }) => {
+  const rough = page.getByRole('group', { name: 'Rough dimensions' })
+  const diameter = rough.getByLabel('Diameter (mm)')
+  const custom = rough.getByText('Custom', { exact: true })
+  await expect(diameter).toHaveValue('3.175')
+  await expect(custom).toBeHidden()
+  await diameter.fill('0')
+  await diameter.press('Enter')
+  await expect(diameter).toHaveAttribute('aria-invalid', 'true')
+  await expect(diameter).toHaveAccessibleDescription('Diameter must be 0.1–50 mm')
+  await expect(custom).toBeHidden()
+  await diameter.fill('6')
+  await diameter.press('Enter')
+  await expect(custom).toBeVisible()
+  await expect(diameter).not.toHaveAttribute('aria-invalid')
+  await expect(diameter).toHaveValue('6')
+  await expect(page.getByLabel('Stepdown')).toHaveValue('3.00')
+  await rough.getByRole('button', { name: 'Reset rough bit' }).click()
+  await expect(custom).toBeHidden()
+  await expect(diameter).toHaveValue('3.175')
+  await expect(page.getByLabel('Stepdown')).toHaveValue('1.60')
 })

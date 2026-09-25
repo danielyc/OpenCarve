@@ -1,22 +1,30 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useId, useRef, useState, type ReactNode } from 'react'
 import { FONTS, loadFont } from './lib/fonts'
 import { fitText, localBounds, scaleShape } from './lib/geometry'
-import { BITS, findBit, findMaterial, MACHINES, MATERIALS } from './lib/library'
+import { BITS, effectiveBit, findBit, findMaterial, MACHINES, MATERIALS, overrideError } from './lib/library'
 import { formatLength, mmToIn, parseLength, type Units } from './lib/units'
-import { isOpen, MAX_STEPOVER, tabsActive, type BitRole, type Cut, type Shape } from './model'
+import { isOpen, MAX_STEPOVER, tabsActive, type BitOverride, type BitRole, type Cut, type Shape, type TextShape } from './model'
 import { useAppStore } from './store'
 
 // `live` commits on every keystroke; the whole focus session is a single undo entry.
-function Field({ label, value, onCommit, wide, live }: { label: string; value: string; onCommit: (text: string) => void; wide?: boolean; live?: boolean }) {
+// `multiline` makes it a textarea (Enter adds a line, Escape leaves); its aria-label keeps the typed text out of its name.
+// `step` makes it a number input. `describedBy` + `invalid` point at an error shown next to the field.
+function Field(props: { label: string; value: string; onCommit: (text: string) => void; wide?: boolean; live?: boolean; multiline?: boolean; step?: number; invalid?: boolean; describedBy?: string }) {
+  const { label, value, onCommit, wide, live, multiline, step, invalid, describedBy } = props
   const [draft, setDraft] = useState<string | null>(null)
+  const gesture = useRef<number>(undefined)
+  const Input = multiline ? 'textarea' : 'input'
   return (
     <label className={wide ? 'field wide' : 'field'}>
       <span>{label}</span>
-      <input
+      <Input
         value={draft ?? value}
+        {...(multiline ? { rows: 2, 'aria-label': label } : step ? { type: 'number', step } : {})}
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
         onFocus={() => {
           setDraft(value)
-          if (live) useAppStore.getState().beginTransient()
+          if (live) gesture.current = useAppStore.getState().beginTransient()
         }}
         onChange={(e) => {
           setDraft(e.target.value)
@@ -25,9 +33,9 @@ function Field({ label, value, onCommit, wide, live }: { label: string; value: s
         onBlur={() => {
           if (draft !== null && draft !== value) onCommit(draft)
           setDraft(null)
-          if (live) useAppStore.getState().commit()
+          if (live) useAppStore.getState().commit(gesture.current)
         }}
-        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+        onKeyDown={(e) => (multiline ? e.key === 'Escape' : e.key === 'Enter') && e.currentTarget.blur()}
       />
     </label>
   )
@@ -56,6 +64,11 @@ const SIDE_HINTS: Record<string, string> = {
   inside: 'Inside: the bit runs inside the line (arrow), so the hole keeps its size.',
   on: 'On path: the bit centre follows the line.',
 }
+
+// The gesture of the slider (depth or bend) being dragged; only one can be at a time.
+let slider = 0
+
+const ALIGN_ICONS = { left: 'M2 4h12M2 8h8M2 12h10', center: 'M2 4h12M4 8h8M3 12h10', right: 'M2 4h12M6 8h8M4 12h10' }
 
 const BIT_TYPES = { endmill: 'Endmill', ballnose: 'Ballnose', vbit: 'V-bit' }
 
@@ -154,9 +167,9 @@ function CutSection({ selected }: { selected: Shape[] }) {
                 max={maxDepth}
                 step="any"
                 value={Math.min(depth, maxDepth)}
-                onPointerDown={() => st().beginTransient()}
-                onPointerUp={() => st().commit()}
-                onBlur={() => st().commit()}
+                onPointerDown={() => (slider = st().beginTransient())}
+                onPointerUp={() => st().commit(slider)}
+                onBlur={() => st().commit(slider)}
                 onChange={(e) => {
                   const v = Number(e.target.value)
                   setCut({ depth: !vcarve && v > t - 0.05 ? t : Math.round(v * 10) / 10 })
@@ -191,6 +204,69 @@ function CutSection({ selected }: { selected: Shape[] }) {
         </>
       )}
     </Section>
+  )
+}
+
+// Inline edits of the chosen library bit, saved as a per-role override. An invalid value reverts and its error stays
+// (with aria-invalid on the field) until the next valid edit. Lengths show 3 decimals in mm so 1/8" reads 3.175.
+function BitOverrideFields({ role }: { role: BitRole }) {
+  const project = useAppStore((s) => s.project)
+  const [error, setError] = useState<{ key: keyof BitOverride; message: string } | null>(null)
+  const errorId = useId()
+  const id = project.bits[role]
+  if (!id) return null
+  const { units } = project
+  const lib = findBit(id)
+  const bit = effectiveBit(project, role)
+  const fmt = (mm: number) => (units === 'mm' ? String(+mm.toFixed(3)) : formatLength(mm, units))
+  const commit = (key: keyof BitOverride, v: number | null) => {
+    const message = v === null ? 'Enter a number' : overrideError(lib, { ...project.bitOverrides?.[role], [key]: v })
+    setError(message ? { key, message } : null)
+    if (!message) useAppStore.getState().setBitOverride(role, { [key]: v! })
+  }
+  const field = (label: string, key: keyof BitOverride, value: string, parse: (t: string) => number | null) => (
+    <Field
+      label={label}
+      value={value}
+      invalid={error?.key === key}
+      describedBy={error?.key === key ? errorId : undefined}
+      onCommit={(t) => commit(key, parse(t))}
+    />
+  )
+  const len = (t: string) => parseLength(t, units)
+  const name = role === 'rough' ? 'Rough' : 'Detail'
+  const libValues = [`${fmt(lib.diameter)} ${units}`, ...(lib.type === 'vbit' ? [`${lib.angle}°`, `flat ${fmt(lib.flat ?? 0)} ${units}`] : [])].join(', ')
+  return (
+    <div className="fields bit-fields" role="group" aria-label={`${name} dimensions`}>
+      {field(`Diameter (${units})`, 'diameter', fmt(bit.diameter), len)}
+      {lib.type === 'vbit' && (
+        <>
+          {field('Angle (°)', 'angle', String(bit.angle), (t) => (t.trim() && Number.isFinite(Number(t)) ? Number(t) : null))}
+          {field(`Flat tip diameter (${units})`, 'flat', fmt(bit.flat ?? 0), len)}
+        </>
+      )}
+      {error && (
+        <p id={errorId} className="hint field-error">
+          {error.message}
+        </p>
+      )}
+      {project.bitOverrides?.[role] && (
+        <p className="note">
+          <span className="badge" title={`library: ${libValues}`}>
+            Custom
+          </span>
+          <button
+            aria-label={`Reset ${name.toLowerCase()} bit`}
+            onClick={() => {
+              setError(null)
+              useAppStore.getState().setBitOverride(role, null)
+            }}
+          >
+            Reset
+          </button>
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -279,12 +355,7 @@ export default function Inspector() {
               </option>
             ))}
           </select>
-          {bit && (
-            <small>
-              {BIT_TYPES[bit.type]} · ⌀ {formatLength(bit.diameter, units)} {units}
-              {bit.angle ? ` · ${bit.angle}°` : ''}
-            </small>
-          )}
+          {bit && <small>{BIT_TYPES[bit.type]}</small>}
         </label>
       )
     }
@@ -324,7 +395,9 @@ export default function Inspector() {
         <Section title="Bits">
           <div className="fields">
             {bitSelect('Rough bit', bits.rough, (rough) => st().setBits({ ...bits, rough }))}
+            <BitOverrideFields role="rough" />
             {bitSelect('Detail bit', bits.detail, (detail) => st().setBits({ rough: bits.rough, ...(detail && { detail }) }), true)}
+            <BitOverrideFields role="detail" />
           </div>
         </Section>
         <Section title="Material">
@@ -363,8 +436,10 @@ export default function Inspector() {
   )
   const polygons = selected.every((s) => s.type === 'polygon')
   const texts = selected.every((s) => s.type === 'text')
-  const updateText = (patch: { text?: string; font?: string; size?: number }) =>
+  const updateText = (patch: Partial<TextShape>) =>
     patch.text?.trim() !== '' && update((s) => (s.type === 'text' ? fitText({ ...s, ...patch }) : s))
+  const textValue = (f: (s: TextShape) => string) => shared((s) => (s.type === 'text' ? f(s) : ''))
+  const bend = textValue((s) => String(s.arc ?? 0))
 
   return (
     <>
@@ -395,11 +470,11 @@ export default function Inspector() {
         )}
         {texts && (
           <>
-            <Field wide live label="Text" value={shared((s) => (s.type === 'text' ? s.text : ''))} onCommit={(text) => updateText({ text })} />
+            <Field wide live multiline label="Text" value={textValue((s) => s.text)} onCommit={(text) => updateText({ text })} />
             <label className="field">
               <span>Font</span>
               <select
-                value={shared((s) => (s.type === 'text' ? s.font : ''))}
+                value={textValue((s) => s.font)}
                 onChange={(e) => {
                   const font = e.target.value
                   loadFont(font)
@@ -414,7 +489,70 @@ export default function Inspector() {
                 ))}
               </select>
             </label>
-            {lengthField('Size', (s) => (s.type === 'text' ? s.size : 0), (s, size) => (s.type === 'text' ? fitText({ ...s, size }) : s), true)}
+            {lengthField('Size', (s) => (s.type === 'text' ? s.size : 0), (s, size) =>
+              s.type === 'text' ? fitText({ ...s, size, ...(s.letterSpacing && { letterSpacing: (s.letterSpacing * size) / s.size }) }) : s,
+            true)}
+            <h3 className="subhead">Layout</h3>
+            {lengthField('Letter spacing', (s) => (s.type === 'text' ? (s.letterSpacing ?? 0) : 0), (s, v) =>
+              s.type === 'text' ? fitText({ ...s, letterSpacing: Math.max(-s.size / 2, v) }) : s,
+            )}
+            <Field
+              live
+              step={0.1}
+              label="Line height ×"
+              value={textValue((s) => String(s.lineHeight ?? 1.2))}
+              onCommit={(t) => {
+                const v = parseFloat(t)
+                if (v >= 0.5 && v <= 3) updateText({ lineHeight: v })
+              }}
+            />
+            <div className="field">
+              <span>Align</span>
+              <div className="segmented" role="radiogroup" aria-label="Align">
+                {(['left', 'center', 'right'] as const).map((a) => (
+                  <label key={a} title={`Align ${a}`}>
+                    <input type="radio" name="text-align" aria-label={`Align ${a}`} checked={textValue((s) => s.align ?? 'center') === a} onChange={() => updateText({ align: a })} />
+                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                      <path d={ALIGN_ICONS[a]} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    </svg>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={textValue((s) => String(!!s.mirror)) === 'true'}
+                ref={(el) => {
+                  if (el) el.indeterminate = textValue((s) => String(!!s.mirror)) === ''
+                }}
+                onChange={(e) => updateText({ mirror: e.target.checked })}
+              />
+              Mirror
+            </label>
+            <div className="bend">
+              <input
+                type="range"
+                aria-label="Bend"
+                aria-valuetext={bend ? `${bend}°` : 'Mixed'}
+                min={-360}
+                max={360}
+                step={5}
+                value={bend || 0}
+                onPointerDown={() => (slider = st().beginTransient())}
+                onPointerUp={() => st().commit(slider)}
+                onBlur={() => st().commit(slider)}
+                onChange={(e) => updateText({ arc: Number(e.target.value) })}
+              />
+              <Field
+                label="Bend °"
+                value={bend}
+                onCommit={(t) => {
+                  const v = parseFloat(t)
+                  if (Number.isFinite(v)) updateText({ arc: Math.min(360, Math.max(-360, v)) })
+                }}
+              />
+            </div>
           </>
         )}
       </div>

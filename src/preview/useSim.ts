@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { findBit } from '../lib/library'
+import { effectiveBit } from '../lib/library'
 import { useAppStore } from '../store'
 import type { SimInput, SimResult } from './sim'
 import type { ProgressRequest } from './simWorker'
@@ -70,16 +70,19 @@ export function useSim() {
   const stock = useAppStore((s) => s.project.stock)
   const bits = useAppStore((s) => s.project.bits)
   const settings = useAppStore((s) => s.project.cutSettings)
+  const bitOverrides = useAppStore((s) => s.project.bitOverrides)
   const camBusy = useAppStore((s) => s.camBusy)
   useEffect(() => {
     useAppStore.setState({ simBusy: true })
     // Wait for the toolpaths to catch up, so a bit change never simulates old paths with the new bit.
     if (camBusy) return
     const t = setTimeout(
-      () =>
-        run({ stock, ops: cam?.ops ?? [], settings, bits: { rough: findBit(bits.rough), ...(bits.detail && { detail: findBit(bits.detail) }) } }),
+      () => {
+        const p = { bits, bitOverrides }
+        run({ stock, ops: cam?.ops ?? [], settings, bits: { rough: effectiveBit(p, 'rough'), ...(bits.detail && { detail: effectiveBit(p, 'detail') }) } })
+      },
       DEBOUNCE_MS,
     )
     return () => clearTimeout(t)
-  }, [cam, camBusy, stock, bits, settings])
+  }, [cam, camBusy, stock, bits, bitOverrides, settings])
 }
