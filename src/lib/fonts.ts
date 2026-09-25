@@ -216,9 +216,10 @@ export type TextStyle = Pick<TextShape, 'letterSpacing' | 'lineHeight' | 'align'
 // each glyph turned about its advance centre so its baseline is tangent. The first baseline's radius is the widest
 // line's length / bend; later lines nest at radius ∓ i × lineHeight × size, keeping their arc length.
 export function glyphPolylines(font: Font, text: string, size: number, style: TextStyle = {}): Polyline[] {
-  const { letterSpacing = 0, lineHeight = 1.2, align = 'center', arc = 0, mirror = false } = style
+  const { letterSpacing = 0, lineHeight = 1.2, align = 'center', mirror = false } = style
+  const arc = Math.abs(style.arc ?? 0) < 0.5 ? 0 : style.arc! // a hair's bend would need an astronomically large radius
   const scale = size / font.unitsPerEm
-  const lines = text.split('\n').map((line) => {
+  const lines = text.split(/\r?\n/).map((line) => {
     const glyphs: { polys: Polyline[]; center: number }[] = []
     let x = 0
     let prev = null
@@ -240,7 +241,10 @@ export function glyphPolylines(font: Font, text: string, size: number, style: Te
   const width = Math.max(...lines.map((l) => l.length))
   const theta = (arc * Math.PI) / 180
   const sign = Math.sign(theta)
-  const radius = Math.max(0.1, width / Math.abs(theta))
+  // ponytail: an upward bend on several lines is limited so the innermost line keeps a radius of at least one text size
+  // (smaller radii collapse its glyphs into the centre); the stored `arc` is untouched, only the layout uses less.
+  const innermost = sign > 0 ? (lines.length - 1) * lineHeight * size : 0
+  const radius = Math.max(0.1, width / Math.abs(theta), innermost && innermost + size)
   const out: Polyline[] = []
   lines.forEach(({ glyphs, length }, i) => {
     const offset = (align === 'left' ? 0 : align === 'right' ? width - length : (width - length) / 2) - width / 2
@@ -259,6 +263,8 @@ export function glyphPolylines(font: Font, text: string, size: number, style: Te
       for (const p of polys) out.push({ closed: true, points: p.points.map(place) })
     }
   })
+  // Belt and braces: anything non-finite (a degenerate bend) falls back to the straight layout rather than NaN bounds.
+  if (arc && !out.every((p) => p.points.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y)))) return glyphPolylines(font, text, size, { ...style, arc: 0 })
   // Mirroring reverses each contour's point order so its winding (outer vs hole) survives the flip.
   if (mirror) {
     let [min, max] = [Infinity, -Infinity]

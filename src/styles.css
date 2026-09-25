@@ -376,6 +376,24 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
+.bit-fields {
+  grid-column: 1 / -1;
+}
+
+.bit-fields .field-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #c92a2a;
+}
+
+.bit-fields .note {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
 .field input,
 .field select {
   width: 100%;
@@ -1184,5 +1202,13 @@ input.project-name {
 
 .font-row .font-remove {
   flex: none;
+  color: var(--muted);
+}
+
+.fields > .subhead {
+  grid-column: 1 / -1;
+  margin: 4px 0 -2px;
+  font-size: 11px;
+  font-weight: 600;
   color: var(--muted);
 }

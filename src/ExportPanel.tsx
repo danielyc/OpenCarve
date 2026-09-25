@@ -1,5 +1,5 @@
 import { toGcode } from './cam/gcode'
-import { findBit } from './lib/library'
+import { effectiveBit } from './lib/library'
 import type { BitRole, Project } from './model'
 import { mmss, ROLE_LABEL, Summary, Warnings } from './SimulatePanel'
 import { useAppStore } from './store'
@@ -33,7 +33,7 @@ export default function ExportPanel() {
       </p>
       <ul className="export-bits">
         {roles.map((role) => {
-          const bit = findBit(project.bits[role]!)
+          const bit = effectiveBit(project, role)
           const ops = cam?.ops.filter((o) => o.role === role).length ?? 0
           const name = fileName(project, bit.name)
           return (
